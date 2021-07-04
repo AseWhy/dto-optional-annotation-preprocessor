@@ -42,9 +42,10 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
-        this.typeUtils = processingEnv.getTypeUtils();
-        this.elementUtils = processingEnv.getElementUtils();
-        this.filter = processingEnv.getFiler();
+        var env = APUtils.unwrap(processingEnv);
+        this.typeUtils = env.getTypeUtils();
+        this.elementUtils = env.getElementUtils();
+        this.filter = env.getFiler();
         this.processors = new ArrayList<>();
         this.processors.add(DateFormatPreprocessor.class);
     }

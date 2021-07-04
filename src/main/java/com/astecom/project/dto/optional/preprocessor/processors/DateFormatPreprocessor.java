@@ -20,7 +20,7 @@ public class DateFormatPreprocessor extends BasePreprocessor<DateFormat> {
 
     @Override
     protected String processResult() {
-        return "new SimpleDateFormat(\"" + (this.annotation.value().isEmpty() ? "yyyy-MM-dd'T'HH:mm:ssZ" : this.annotation.value()) + "\").parse(value)";
+        return "value != null ? new SimpleDateFormat(\"" + (this.annotation.value().isEmpty() ? "yyyy-MM-dd'T'HH:mm:ssZ" : this.annotation.value()) + "\").parse(value) : null";
     }
 
     @Override

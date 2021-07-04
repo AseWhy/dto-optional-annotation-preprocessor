@@ -37,10 +37,11 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
-        this.trees = Trees.instance(processingEnv);
-        this.typeUtils = processingEnv.getTypeUtils();
-        this.elementUtils = processingEnv.getElementUtils();
-        this.filter = processingEnv.getFiler();
+        var env = APUtils.unwrap(processingEnv);
+        this.trees = Trees.instance(env);
+        this.typeUtils = env.getTypeUtils();
+        this.elementUtils = env.getElementUtils();
+        this.filter = env.getFiler();
     }
 
     @Override
