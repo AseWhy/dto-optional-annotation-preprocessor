@@ -5,6 +5,7 @@ import javax.lang.model.type.MirroredTypesException;
 import javax.lang.model.type.TypeMirror;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Стырил https://stackoverflow.com/questions/7687829/java-6-annotation-processing-getting-a-class-from-an-annotation
@@ -38,5 +39,9 @@ public class APUtils {
 
     public static Boolean classesExists(String ...full_names) {
         return Arrays.stream(full_names).allMatch(APUtils::classExists);
+    }
+
+    public static String camelCase(String input) {
+        return input.substring(0, 1).toUpperCase(Locale.ROOT) + input.substring(1);
     }
 }

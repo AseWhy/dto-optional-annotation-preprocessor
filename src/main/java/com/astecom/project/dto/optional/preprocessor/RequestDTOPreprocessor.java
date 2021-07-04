@@ -5,6 +5,9 @@ import com.astecom.project.dto.optional.preprocessor.members.Annotation;
 import com.astecom.project.dto.optional.preprocessor.members.DefaultDatasetClassBag;
 import com.astecom.project.dto.optional.preprocessor.members.FieldContainer;
 import com.astecom.project.dto.optional.preprocessor.members.GenericBag;
+import com.astecom.project.dto.optional.preprocessor.processors.DateFormatPreprocessor;
+import com.astecom.project.dto.optional.preprocessor.processors.base.BasePreprocessor;
+import com.astecom.project.dto.optional.preprocessor.utils.APUtils;
 
 import javax.annotation.processing.*;
 import javax.lang.model.SourceVersion;
@@ -21,6 +24,7 @@ import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -33,6 +37,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
     protected Types typeUtils;
     protected Elements elementUtils;
     protected Filer filter;
+    protected List<Class<? extends BasePreprocessor<?>>> processors;
 
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
@@ -40,6 +45,8 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
         this.typeUtils = processingEnv.getTypeUtils();
         this.elementUtils = processingEnv.getElementUtils();
         this.filter = processingEnv.getFiler();
+        this.processors = new ArrayList<>();
+        this.processors.add(DateFormatPreprocessor.class);
     }
 
     @Override
@@ -78,10 +85,13 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                 result.str_name = current.getSimpleName().toString();
                 result.str_access = current.getModifiers().stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
                 result.annotations = type.getAnnotations();
+                result.base = current;
 
                 bag.fields.add(result);
                 bag.imports.addAll(type.getImports());
             }
+
+            bag.imports.addAll(getFieldConversionImports(current));
         }
 
         if(bag.base_class != null) {
@@ -147,21 +157,24 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
 
                 for(var field: bag.fields) {
                     pw.print("\n");
-                    pw.println("\tpublic Boolean has" + camelCase(field.str_name) + "Field() {");
+                    pw.println("\tpublic Boolean has" + APUtils.camelCase(field.str_name) + "Field() {");
                     pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
                     pw.println("\t}");
                     pw.print("\n");
-                    pw.println("\tpublic " + field.str_type + " get" + camelCase(field.str_name) + "(" + field.str_type + " def) {");
+                    pw.println("\tpublic " + field.str_type + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
                     pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
                     pw.println("\t}");
                     pw.print("\n");
-                    pw.println("\tpublic " + field.str_type + " get" + camelCase(field.str_name) + "() {");
-                    pw.println("\t\treturn this.get" + camelCase(field.str_name) + "(null);");
+                    pw.println("\tpublic " + field.str_type + " get" + APUtils.camelCase(field.str_name) + "() {");
+                    pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
                     pw.println("\t}");
                     pw.print("\n");
-                    pw.println("\tpublic void set" + camelCase(field.str_name) + "(final " + field.str_type + " value) {");
-                    pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
-                    pw.println("\t}");
+
+                    try {
+                        writeSetter(field.base, field, pw);
+                    } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
                 }
 
                 pw.println("}");
@@ -172,10 +185,6 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
         } catch (IOException x) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, x.toString());
         }
-    }
-
-    private String camelCase(String input) {
-        return input.substring(0, 1).toUpperCase(Locale.ROOT) + input.substring(1);
     }
 
     private String getNewClassName(String input) {
@@ -225,6 +234,45 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
         }
     }
 
+    private void writeSetter(
+        Element field_element,
+        FieldContainer field,
+        PrintWriter pw
+    ) throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
+        var write_anyone = false;
+
+        for(var processor: processors) {
+            if(processor.getConstructor(PrintWriter.class).newInstance(pw).process(field_element, field, true)) {
+                write_anyone = true;
+            }
+        }
+
+        if(!write_anyone) {
+            pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " value) {");
+            pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
+            pw.println("\t}");
+        }
+    }
+
+    private List<String> getFieldConversionImports(Element current){
+        var imports = new ArrayList<String>();
+
+        for(var processor_class: processors) {
+            try {
+                var processor = processor_class.getConstructor(PrintWriter.class).newInstance((PrintWriter) null);
+                var p_imports = processor.getProvidedImports(current);
+
+                if(p_imports != null) {
+                    imports.addAll(p_imports);
+                }
+            } catch (InstantiationException | NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+                e.printStackTrace();
+            }
+        }
+
+        return imports;
+    }
+    
     private Annotation handleAnnotation(AnnotationMirror e) {
         var annotation = new Annotation();
         var values = e.getElementValues();
