@@ -33,7 +33,14 @@ import RequestDTO;
 
 @RequestDTO
 class SomeClassDTO {
-    private String some_field;
+    // 
+    // При конверсии в объект запроса это поле будет преобразовано в snake_case -> some_field как поле json, я так сделал т.к. большинство
+    // моих проектов используют имено этот стиль именования полей при передаче JSON. А т.к. в java есть соглашение о camelCase именах, то
+    // тут они будут использоваться как camelCase.
+    //
+    // Проще говоря, в теле запроса будет some_field тут это будет преобразовано в someField.
+    // 
+    private String someField;
 }
 ```
 
@@ -89,8 +96,8 @@ import lombok.Data;
 
 @Data
 public class SomeClass {
-    private String some_field;
-    private String some_hidden_field;
+    private String someField;
+    private String someHiddenField;
 }
 ```
 
@@ -103,7 +110,15 @@ import ResponseDTO;
 
 @ResponseDTO({SomeModel.class})
 public class SomeClassDTO {
-    private String some_field;
+    // 
+    // Точно такая-же ситуация и с dto ответа, названия будут принудительно преобразованы в snake_case, в то время как в
+    // геттеры сеттеры и функции проверки наличия останутся с camelCase оригинальным названием
+    //
+    // При конверсии из связанных сущностей так-же будут использоваться поля с оригинальными названиями.
+    // 
+    // Проще говоря, тут someField а в ответе будет поле some_field.
+    // 
+    private String someField;
 }
 ```
 
@@ -122,30 +137,30 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
  */
 @JsonSerialize(using = SomeClassDTOResponseSerializer.class)
 public class SomeClassResponseDTO {
-	private Optional<String> some_field;
+	private Optional<String> someField;
 
 	public SomeClassResponseDTO() {
-		this.some_field = null;
+		this.someField = null;
 	}
 
 	public SomeClassResponseDTO(SomeClass from) {
-		this.setSome_field(from.getSome_field());
+		this.setSomeField(from.getSomeField());
 	}
 
-	public Boolean hasSome_fieldField() {
-		return this.some_field != null;
+	public Boolean hasSomeFieldField() {
+		return this.someField != null;
 	}
 
-	public String getSome_field(String def) {
-		return this.some_field != null ? this.some_field.orElse(def) : def;
+	public String getSomeField(String def) {
+		return this.someField != null ? this.someField.orElse(def) : def;
 	}
 
-	public String getSome_field() {
-		return this.getSome_field(null);
+	public String getSomeField() {
+		return this.getSomeField(null);
 	}
 
-	public void setSome_field(final String value) {
-		this.some_field = Optional.ofNullable(value);
+	public void setSomeField(final String value) {
+		this.someField = Optional.ofNullable(value);
 	}
 }
 ```
@@ -180,7 +195,7 @@ class SomeClassDTOResponseSerializer extends StdSerializer<SomeClassResponseDTO>
 
 		if(value.hasSome_fieldField()) {
 			if(value.getSome_field() != null) {
-				gen.writeStringField("some_field", value.getSome_field());
+				gen.writeStringField("some_field", value.getSomeField());
 			} else {
 				gen.writeNullField("some_field");
 			}
