@@ -14,6 +14,15 @@ has`field_name`Field которые вернет true в случае если �
 в запросе
 
 ## Как пользоваться?
+### Установка
+```xml
+<dependency>
+    <groupId>io.github.asewhy</groupId>
+    <artifactId>dto-optional-annotation-preprocessor</artifactId>
+    <version>0.0.2</version>
+</dependency>
+```
+
 ### Запросы
 Пример создания DTO запроса
 

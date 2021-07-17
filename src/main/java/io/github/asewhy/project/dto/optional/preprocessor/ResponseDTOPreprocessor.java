@@ -7,8 +7,6 @@ import io.github.asewhy.project.dto.optional.preprocessor.scanner.CodeIdentifier
 import io.github.asewhy.project.dto.optional.preprocessor.scanner.CodeImportsAnalyzer;
 import io.github.asewhy.project.dto.optional.preprocessor.scanner.CodeMethodParametersAnalyzer;
 import io.github.asewhy.project.dto.optional.preprocessor.annotations.SkipNullCheck;
-import com.astecom.project.dto.optional.preprocessor.members.*;
-import io.github.astecom.project.dto.optional.preprocessor.members.*;
 import io.github.asewhy.project.dto.optional.preprocessor.utils.APUtils;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.VariableTree;
@@ -29,7 +27,7 @@ import java.io.PrintWriter;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@SupportedAnnotationTypes({ "com.astecom.project.dto.optional.preprocessor.annotations.ResponseDTO" })
+@SupportedAnnotationTypes({ "io.github.asewhy.project.dto.optional.preprocessor.annotations.ResponseDTO" })
 @SupportedSourceVersion(SourceVersion.RELEASE_6)
 public class ResponseDTOPreprocessor extends AbstractProcessor {
     protected Trees trees;

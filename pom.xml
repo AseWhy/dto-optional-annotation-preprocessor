@@ -8,7 +8,7 @@
 
     <groupId>io.github.asewhy</groupId>
     <artifactId>dto-optional-annotation-preprocessor</artifactId>
-    <version>0.2-SNAPSHOT</version>
+    <version>0.0.2</version>
     <url>https://github.com/AseWhy/dto-optional-annotation-preprocessor</url>
 
     <properties>
@@ -27,7 +27,7 @@
     <developers>
         <developer>
             <id>astecom</id>
-            <name>Alecesey</name>
+            <name>Alecsey</name>
             <email>astecom@mail.ru</email>
             <timezone>Europe/Samara</timezone>
         </developer>
@@ -74,11 +74,11 @@
     <distributionManagement>
         <snapshotRepository>
             <id>ossrh</id>
-            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
+            <url>https://s01.oss.sonatype.org/content/repositories/snapshots</url>
         </snapshotRepository>
         <repository>
             <id>ossrh</id>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+            <url>https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/</url>
         </repository>
     </distributionManagement>
 </project>

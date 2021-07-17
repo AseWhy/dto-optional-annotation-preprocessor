@@ -28,7 +28,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-@SupportedAnnotationTypes({ "com.astecom.project.dto.optional.preprocessor.annotations.RequestDTO" })
+@SupportedAnnotationTypes({ "io.github.asewhy.project.dto.optional.preprocessor.annotations.RequestDTO" })
 @SupportedSourceVersion(SourceVersion.RELEASE_6)
 public class RequestDTOPreprocessor extends AbstractProcessor {
     protected Types typeUtils;
