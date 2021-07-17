@@ -1,7 +1,7 @@
-package com.astecom.project.dto.optional.preprocessor.processors.base;
+package io.github.asewhy.project.dto.optional.preprocessor.processors.base;
 
-import com.astecom.project.dto.optional.preprocessor.members.FieldContainer;
-import com.astecom.project.dto.optional.preprocessor.utils.APUtils;
+import io.github.asewhy.project.dto.optional.preprocessor.members.FieldContainer;
+import io.github.asewhy.project.dto.optional.preprocessor.utils.APUtils;
 
 import javax.lang.model.element.Element;
 import java.io.PrintWriter;

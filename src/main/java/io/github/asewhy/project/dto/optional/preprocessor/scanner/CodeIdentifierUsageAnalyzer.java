@@ -1,4 +1,4 @@
-package com.astecom.project.dto.optional.preprocessor.scanner;
+package io.github.asewhy.project.dto.optional.preprocessor.scanner;
 
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.util.TreePathScanner;

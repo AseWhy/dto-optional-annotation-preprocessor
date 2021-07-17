@@ -1,13 +1,15 @@
-package com.astecom.project.dto.optional.preprocessor;
+package io.github.asewhy.project.dto.optional.preprocessor;
 
-import com.astecom.project.dto.optional.preprocessor.annotations.RequestDTO;
-import com.astecom.project.dto.optional.preprocessor.annotations.ResponseDTO;
-import com.astecom.project.dto.optional.preprocessor.annotations.SkipNullCheck;
+import io.github.asewhy.project.dto.optional.preprocessor.annotations.RequestDTO;
+import io.github.asewhy.project.dto.optional.preprocessor.annotations.ResponseDTO;
+import io.github.asewhy.project.dto.optional.preprocessor.members.*;
+import io.github.asewhy.project.dto.optional.preprocessor.scanner.CodeIdentifierUsageAnalyzer;
+import io.github.asewhy.project.dto.optional.preprocessor.scanner.CodeImportsAnalyzer;
+import io.github.asewhy.project.dto.optional.preprocessor.scanner.CodeMethodParametersAnalyzer;
+import io.github.asewhy.project.dto.optional.preprocessor.annotations.SkipNullCheck;
 import com.astecom.project.dto.optional.preprocessor.members.*;
-import com.astecom.project.dto.optional.preprocessor.scanner.CodeIdentifierUsageAnalyzer;
-import com.astecom.project.dto.optional.preprocessor.scanner.CodeImportsAnalyzer;
-import com.astecom.project.dto.optional.preprocessor.scanner.CodeMethodParametersAnalyzer;
-import com.astecom.project.dto.optional.preprocessor.utils.APUtils;
+import io.github.astecom.project.dto.optional.preprocessor.members.*;
+import io.github.asewhy.project.dto.optional.preprocessor.utils.APUtils;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.Trees;

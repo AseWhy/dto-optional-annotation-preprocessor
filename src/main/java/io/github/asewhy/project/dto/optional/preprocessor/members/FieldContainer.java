@@ -1,4 +1,4 @@
-package com.astecom.project.dto.optional.preprocessor.members;
+package io.github.asewhy.project.dto.optional.preprocessor.members;
 
 import javax.lang.model.element.VariableElement;
 

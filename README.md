@@ -20,7 +20,7 @@ has`field_name`Field которые вернет true в случае если �
 ```java
 package ru.some;
 
-import com.astecom.project.dto.optional.preprocessor.annotations.RequestDTO;
+import RequestDTO;
 
 @RequestDTO
 class SomeClassDTO {
@@ -90,9 +90,9 @@ public class SomeClass {
 ```java
 package ru.some;
 
-import com.astecom.project.dto.optional.preprocessor.annotations.ResponseDTO;
+import ResponseDTO;
 
-@ResponseDTO({ SomeModel.class })
+@ResponseDTO({SomeModel.class})
 public class SomeClassDTO {
     private String some_field;
 }

@@ -1,4 +1,4 @@
-package com.astecom.project.dto.optional.preprocessor.annotations;
+package io.github.asewhy.project.dto.optional.preprocessor.annotations;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;

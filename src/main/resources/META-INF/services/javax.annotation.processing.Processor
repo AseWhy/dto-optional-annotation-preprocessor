@@ -1,2 +1,2 @@
-com.astecom.project.dto.optional.preprocessor.RequestDTOPreprocessor
-com.astecom.project.dto.optional.preprocessor.ResponseDTOPreprocessor
+io.github.asewhy.project.dto.optional.preprocessor.RequestDTOPreprocessor
+io.github.asewhy.project.dto.optional.preprocessor.ResponseDTOPreprocessor
