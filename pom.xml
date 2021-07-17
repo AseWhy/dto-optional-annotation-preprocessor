@@ -6,7 +6,7 @@
 >
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.astecom</groupId>
+    <groupId>io.github.astecom</groupId>
     <artifactId>dto-optional-annotation-preprocessor</artifactId>
     <version>0.2-SNAPSHOT</version>
     <url>https://github.com/AseWhy/dto-optional-annotation-preprocessor</url>
@@ -15,6 +15,29 @@
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
     </properties>
+
+    <licenses>
+        <license>
+            <name>The Apache Software License, Version 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>astecom</id>
+            <name>Alecesey</name>
+            <email>astecom@mail.ru</email>
+            <timezone>Europe/Samara</timezone>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:https://github.com/AseWhy/dto-optional-annotation-preprocessor.git</connection>
+        <developerConnection>scm:git:git@github.com:AseWhy/dto-optional-annotation-preprocessor.git</developerConnection>
+        <url>https://github.com/AseWhy/dto-optional-annotation-preprocessor</url>
+    </scm>
 
     <dependencies>
         <dependency>
@@ -49,15 +72,13 @@
     </build>
 
     <distributionManagement>
-        <repository>
-            <id>nexus</id>
-            <name>maven-releases</name>
-            <url>http://repository.recode.team/repository/maven-releases/</url>
-        </repository>
         <snapshotRepository>
-            <id>nexus</id>
-            <name>maven-snapshots</name>
-            <url>http://repository.recode.team/repository/maven-snapshots/</url>
+            <id>ossrh</id>
+            <url>https://oss.sonatype.org/content/repositories/snapshots</url>
         </snapshotRepository>
+        <repository>
+            <id>ossrh</id>
+            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+        </repository>
     </distributionManagement>
 </project>

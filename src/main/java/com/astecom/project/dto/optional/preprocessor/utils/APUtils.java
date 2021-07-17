@@ -50,6 +50,22 @@ public class APUtils {
         return input.substring(0, 1).toUpperCase(Locale.ROOT) + input.substring(1);
     }
 
+    public static String cameToSnakeCase(String input) {
+        return input.replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2").replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
+    }
+
+    public static String toGetter(String field_name) {
+        return "get" + camelCase(field_name);
+    }
+
+    public static String toSnakeSetter(String field_name) {
+        return "set" + camelCase(cameToSnakeCase(field_name));
+    }
+
+    public static String toSetter(String field_name) {
+        return "set" + camelCase(field_name);
+    }
+
     /**
      * Спизжено: https://github.com/c0stra/fluent-api-end-check/pull/17/commits/5187d7716c71971456fbb45c10aafacebf048c85
      *

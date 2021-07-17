@@ -2,6 +2,7 @@ package com.astecom.project.dto.optional.preprocessor;
 
 import com.astecom.project.dto.optional.preprocessor.annotations.RequestDTO;
 import com.astecom.project.dto.optional.preprocessor.annotations.ResponseDTO;
+import com.astecom.project.dto.optional.preprocessor.annotations.SkipNullCheck;
 import com.astecom.project.dto.optional.preprocessor.members.*;
 import com.astecom.project.dto.optional.preprocessor.scanner.CodeIdentifierUsageAnalyzer;
 import com.astecom.project.dto.optional.preprocessor.scanner.CodeImportsAnalyzer;
@@ -205,7 +206,13 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 pw.println("\tpublic " + bag.new_name + "() {");
 
                 for(var field: bag.fields) {
-                    pw.println("\t\tthis." + field.str_name + " = null;");
+                    var constant = field.base.getConstantValue();
+
+                    pw.print("\t\tthis.");
+                    pw.print(field.str_name);
+                    pw.print(" = ");
+                    pw.print((constant == null ? null : (serializer_enabled ? "Optional.ofNullable(" : "") + (constant instanceof String ? "\"" + constant + "\"" : constant) + (serializer_enabled ? ")" : "")));
+                    pw.println(";");
                 }
 
                 pw.println("\t}");
@@ -224,31 +231,32 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                     }
 
                     pw.print("\n");
-                    pw.println("\tpublic " + field.str_type + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
+                    pw.println("\tpublic " + field.annotations + field.str_type + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
 
                     if(serializer_enabled) {
                         pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
-                        pw.println("\t}");
-                        pw.print("\n");
-                        pw.println("\tpublic " + field.str_type + " get" + APUtils.camelCase(field.str_name) + "() {");
-                        pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
-                        pw.println("\t}");
-                        pw.print("\n");
-                        pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
-                        pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
                     } else {
                         pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + " : def;");
-                        pw.println("\t}");
-                        pw.print("\n");
-                        pw.println("\tpublic " + field.str_type + " get" + APUtils.camelCase(field.str_name) + "() {");
-                        pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
-                        pw.println("\t}");
-                        pw.print("\n");
-                        pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
-                        pw.println("\t\tthis." + field.str_name + " = value;");
                     }
 
                     pw.println("\t}");
+                    pw.print("\n");
+                    pw.println("\tpublic " + field.annotations + field.str_type + " get" + APUtils.camelCase(field.str_name) + "() {");
+                    pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
+                    pw.println("\t}");
+                    pw.print("\n");
+
+                    if(!field.base.getModifiers().contains(Modifier.FINAL)) {
+                        if(serializer_enabled) {
+                            pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
+                            pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
+                            pw.println("\t}");
+                        } else {
+                            pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
+                            pw.println("\t\tthis." + field.str_name + " = value;");
+                            pw.println("\t}");
+                        }
+                    }
                 }
 
                 pw.println("}");
@@ -330,7 +338,8 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         builder.append(char_trip).append("gen.writeStartObject();\n\n");
 
         for(var field: from_fields.values()) {
-            var getter = "get" + APUtils.camelCase(field.getSimpleName().toString());
+            var getter = APUtils.toGetter(field.getSimpleName().toString());
+            var snake_name = APUtils.cameToSnakeCase(field.getSimpleName().toString());
             var build_with_field = buildWithTypeOf(field.asType());
 
             builder.append(char_trip).append("if(value.").append("has").append(APUtils.camelCase(field.getSimpleName().toString())).append("Field").append("()) {\n");
@@ -342,7 +351,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                     .append("\t\t")
                     .append(build_with_field)
                     .append("(\"")
-                    .append(field.getSimpleName())
+                    .append(snake_name)
                     .append("\", ")
                     .append("value.")
                     .append(getter)
@@ -352,7 +361,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                     .append(char_trip)
                     .append("\t\t")
                     .append("provider.defaultSerializeField(\"")
-                    .append(field.getSimpleName())
+                    .append(snake_name)
                     .append("\", ")
                     .append("value.")
                     .append(getter)
@@ -364,7 +373,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 .append("\t} else {\n")
                 .append(char_trip)
                 .append("\t\tgen.writeNullField(\"")
-                .append(field.getSimpleName())
+                .append(snake_name)
                 .append("\");\n")
                 .append(char_trip)
                 .append("\t}\n")
@@ -417,20 +426,23 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
             .append("(")
             .append(conversion_name)
             .append(" from)")
-        .append(" {");
+        .append(" {\n\t\tthis();\n\n\t\tif(from != null) {");
 
         //
         // Стандартный обработчик конверсии
         //
         for(var field: object_fields.values()) {
-            var getter_signature = "get" + APUtils.camelCase(field.getSimpleName().toString());
+            var getter_signature = APUtils.toGetter(field.getSimpleName().toString());
             var getter = object_methods.get(getter_signature);
             var mirror_signature = fields.keySet().stream().filter(e -> e.startsWith(field.getSimpleName().toString())).min(Comparator.comparingInt(String::length)).orElse("");
             var mirror_rest = mirror_signature.length() > field.getSimpleName().length() ? mirror_signature.substring(field.getSimpleName().length()) : "";
             var mirror = fields.get(mirror_signature);
 
+            //
+            // Условия обработки поля
+            //
             if(
-                mirror != null && (
+                mirror != null && !mirror.base.getModifiers().contains(Modifier.FINAL) && (
                     getter != null && getter.getModifiers().contains(Modifier.PUBLIC) ||
                     element.getAnnotation(RequestDTO.class) != null && (
                         field.getModifiers().contains(Modifier.PRIVATE) ||
@@ -438,6 +450,13 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                     )
                 )
             ) {
+                //
+                // Пропустить проверку на null в этом поле.
+                //
+                var skip_null_check = field.getAnnotation(SkipNullCheck.class) != null || mirror.base.getAnnotation(SkipNullCheck.class) != null;
+                //
+                // Возвращаемый тип
+                //
                 var return_type = getter != null ? getter.getReturnType() : field.asType();
 
                 if(mirror_rest.length() != 0) {
@@ -455,12 +474,12 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                         if (return_type_element instanceof TypeElement) {
                             var type = (TypeElement) return_type_element;
-                            var rest_getter = "get" + APUtils.camelCase(mirror_rest);
+                            var rest_getter = APUtils.toGetter(mirror_rest);
                             var get_rest = ElementFilter.methodsIn(type.getEnclosedElements()).stream().filter(e -> e.getSimpleName().toString().equals(rest_getter)).findFirst().orElse(null);
 
                             if (getter == null || getter.getParameters().size() == 0 && ((TypeElement) typeUtils.asElement(Objects.requireNonNull(get_rest).getReturnType())).getQualifiedName().toString().equals(mirror.root_type)) {
                                 builder
-                                    .append("\n\t\tthis.set")
+                                    .append("\n\t\t\tthis.set")
                                     .append(APUtils.camelCase(mirror.str_name))
                                     .append("(Objects.requireNonNullElse(from.")
                                     .append(getter_signature)
@@ -523,22 +542,35 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                 case "java.util.TreeSet":
                                                 case "java.util.Set":
                                                     builder
-                                                        .append("\n\t\tthis.set")
-                                                        .append(APUtils.camelCase(mirror.str_name))
-                                                        .append("((").append(mirror.str_type)
+                                                        .append(skip_null_check ? "" : "\n\t\t\tif(from.")
+                                                        .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
+                                                        .append(skip_null_check ? "" : "() != null) {")
+                                                        .append("\n\t\t\t")
+                                                        .append(skip_null_check ? "" : "\t")
+                                                        .append("this.")
+                                                        .append(APUtils.toSetter(mirror.str_name))
+                                                        .append("((")
+                                                        .append(mirror.str_type)
                                                         .append(") from.")
                                                         .append(getter_signature)
-                                                    .append("().clone());");
+                                                        .append("().clone());")
+                                                    .append(skip_null_check ? "" : "\n\t\t\t}");
                                                 break;
                                                 case "java.util.LinkedList":
                                                 case "java.util.ArrayList":
                                                 case "java.util.List":
                                                     builder
-                                                        .append("\n\t\tthis.set")
-                                                        .append(APUtils.camelCase(mirror.str_name))
+                                                        .append(skip_null_check ? "" : "\n\t\t\tif(from.")
+                                                        .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
+                                                        .append(skip_null_check ? "" : "() != null) {")
+                                                        .append("\n\t\t\t")
+                                                        .append(skip_null_check ? "" : "\t")
+                                                        .append("this.")
+                                                        .append(APUtils.toSetter(mirror.str_name))
                                                         .append("(new ArrayList<>(from.")
                                                         .append(getter_signature)
-                                                    .append("()));");
+                                                        .append("()));")
+                                                    .append(skip_null_check ? "" : "\n\t\t\t}");
 
                                                     bag.imports.add("java.util.ArrayList");
                                                 break;
@@ -579,14 +611,18 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                     APUtils.getTypeMirrorFromAnnotationValue(() -> request_dto_annotation.value()).stream()
                                                         .map(e -> ((TypeElement) typeUtils.asElement(e)).getQualifiedName()).anyMatch(e -> e.toString().equals(return_declared_type_element_str))
                                             ) {
-                                                var camel = APUtils.camelCase(mirror.str_name);
                                                 var name = mirror_declared_type_element.getSimpleName().toString();
 
                                                 builder
-                                                    .append("\n\t\tthis.set")
-                                                    .append(camel)
-                                                    .append("(from.get")
-                                                    .append(camel)
+                                                    .append(skip_null_check ? "" : "\n\t\t\tif(from.")
+                                                    .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
+                                                    .append(skip_null_check ? "" : "() != null) {")
+                                                    .append("\n\t\t\t")
+                                                    .append(skip_null_check ? "" : "\t")
+                                                    .append("this.")
+                                                    .append(APUtils.toSetter(mirror.str_name))
+                                                    .append("(from.")
+                                                    .append(APUtils.toGetter(mirror.str_name))
                                                     .append("().stream().map(")
                                                     .append(request_dto_annotation != null ? getNewClassName(name) : name)
                                                     .append("::new")
@@ -608,6 +644,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                 }
 
                                                 builder.append("()));");
+                                                builder.append(skip_null_check ? "" : "\n\t\t\t}");
 
                                                 bag.imports.add(mirror_declared_type_element.getQualifiedName().toString());
                                                 bag.imports.add("java.util.stream.Collectors");
@@ -619,7 +656,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                         skip_count++;
                                     }
                                 } else {
-                                    builder.append("\n\t\tthis.set").append(APUtils.camelCase(mirror.str_name)).append("(from.").append(getter_signature).append("());");
+                                    builder.append("\n\t\t\tthis.").append(APUtils.toSetter(mirror.str_name)).append("(from.").append(getter_signature).append("());");
                                 }
                             } else {
                                 //
@@ -663,13 +700,19 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                         var name = t_mirror_type.getSimpleName().toString();
 
                                         builder
-                                            .append("\n\t\tthis.set")
-                                            .append(APUtils.camelCase(mirror.str_name))
+                                            .append(skip_null_check ? "" : "\n\t\t\tif(from.")
+                                            .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
+                                            .append(skip_null_check ? "" : "() != null) {")
+                                            .append("\n\t\t\t")
+                                            .append(skip_null_check ? "" : "\t")
+                                            .append("this.")
+                                            .append(APUtils.toSetter(mirror.str_name))
                                             .append("(new ")
                                             .append(request_dto_annotation != null ? getNewClassName(name) : name)
                                             .append("(from.")
                                             .append(getter_signature)
-                                        .append("()));");
+                                            .append("()));")
+                                        .append(skip_null_check ? "" : "\n\t\t\t}");
 
                                         bag.imports.add(t_mirror_type.getQualifiedName().toString());
                                     } else {
@@ -710,7 +753,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                         var param_name = detectMethodParams(tree.getParameters()).stream().findFirst().orElse(null);
 
                         for(var line: tree.getBody().getStatements()) {
-                            builder.append("\n\t\t").append(replaceAllLinks(line, param_name, "from"));
+                            builder.append("\n\t\t\t").append(replaceAllLinks(line, param_name, "from"));
                         }
 
                         bag.imports.addAll(getIntersectOf(constructor, parent_imports));
@@ -723,7 +766,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
             System.out.println("[WARN] When creating the converter " + constructor_name + " -> " + conversion_name + " " + skip_count + " fields were omitted");
         }
 
-        builder.append("\n\t}");
+        builder.append("\n\t\t}\n\t}");
 
         bag.data = builder.toString();
         bag.imports.add(element.getQualifiedName().toString());

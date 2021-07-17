@@ -34,7 +34,7 @@ public abstract class BasePreprocessor<A extends Annotation> {
             var a_throws = getSetterExceptions();
             var result = processResult();
 
-            writer.print("\tpublic void set" + APUtils.camelCase(field.str_name) + "(" + (this.getSetterType() != null ? this.getSetterType() : field.str_type) + " value) ");
+            writer.print("\tpublic void " + APUtils.toSnakeSetter(field.str_name) + "(" + (this.getSetterType() != null ? this.getSetterType() : field.str_type) + " value) ");
 
             if(a_throws != null && a_throws.size() > 0) {
                 writer.println("throws " + String.join(", ", a_throws) + " {");

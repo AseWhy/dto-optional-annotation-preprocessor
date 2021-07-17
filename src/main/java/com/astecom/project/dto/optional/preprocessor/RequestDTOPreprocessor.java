@@ -11,10 +11,7 @@ import com.astecom.project.dto.optional.preprocessor.utils.APUtils;
 
 import javax.annotation.processing.*;
 import javax.lang.model.SourceVersion;
-import javax.lang.model.element.AnnotationMirror;
-import javax.lang.model.element.Element;
-import javax.lang.model.element.ElementKind;
-import javax.lang.model.element.TypeElement;
+import javax.lang.model.element.*;
 import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
@@ -151,7 +148,13 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                 pw.println("\tpublic " + bag.new_name + "() {");
 
                 for(var field: bag.fields) {
-                    pw.println("\t\tthis." + field.str_name + " = null;");
+                    var constant = field.base.getConstantValue();
+
+                    pw.print("\t\tthis.");
+                    pw.print(field.str_name);
+                    pw.print(" = ");
+                    pw.print((constant == null ? null : "Optional.ofNullable(" + (constant instanceof String ? "\"" + constant + "\"" : constant) + ")"));
+                    pw.println(";");
                 }
 
                 pw.println("\t}");
@@ -162,19 +165,21 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                     pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
                     pw.println("\t}");
                     pw.print("\n");
-                    pw.println("\tpublic " + field.str_type + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
+                    pw.println("\tpublic " + field.annotations + field.str_type + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
                     pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
                     pw.println("\t}");
                     pw.print("\n");
-                    pw.println("\tpublic " + field.str_type + " get" + APUtils.camelCase(field.str_name) + "() {");
-                    pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
+                    pw.println("\tpublic " + field.annotations + field.str_type + " get" + APUtils.camelCase(field.str_name) + "() {");
+                    pw.println("\t\treturn this." + APUtils.toGetter(field.str_name) + "(null);");
                     pw.println("\t}");
                     pw.print("\n");
 
-                    try {
-                        writeSetter(field.base, field, pw);
-                    } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
-                        e.printStackTrace();
+                    if(!field.base.getModifiers().contains(Modifier.FINAL)) {
+                        try {
+                            writeSetter(field.base, field, pw);
+                        } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
+                            e.printStackTrace();
+                        }
                     }
                 }
 
@@ -249,7 +254,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
         }
 
         if(!write_anyone) {
-            pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " value) {");
+            pw.println("\tpublic void " + APUtils.toSnakeSetter(field.str_name) + "(" + field.str_type + " value) {");
             pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
             pw.println("\t}");
         }
