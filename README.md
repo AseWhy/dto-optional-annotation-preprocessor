@@ -58,26 +58,26 @@ import java.util.Optional;
  * Это реализация Data Transfer Object для запроса. Реализованно от класса @see {@link SomeClassDTO}
  */
 public class SomeClassRequestDTO {
-	private Optional<String> some_field;
+	private Optional<String> someField;
 
 	public SomeClassRequestDTO() {
-		this.some_field = null;
+		this.someField = null;
 	}
 
 	public Boolean hasSome_fieldField() {
-		return this.some_field != null;
+		return this.someField != null;
 	}
 
-	public String getSome_field(String def) {
-		return this.some_field != null ? this.some_field.orElse(def) : def;
+	public String getSomeFiled(String def) {
+		return this.someField != null ? this.someField.orElse(def) : def;
 	}
 
 	public String getSome_field() {
-		return this.getSome_field(null);
+		return this.getSomeFiled(null);
 	}
 
-	public void setSome_field(final String value) {
-		this.some_field = Optional.ofNullable(value);
+	public void setSomeField(final String value) {
+		this.someField = Optional.ofNullable(value);
 	}
 }
 ```
