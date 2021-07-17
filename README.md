@@ -64,7 +64,7 @@ public class SomeClassRequestDTO {
 		this.someField = null;
 	}
 
-	public Boolean hasSome_fieldField() {
+	public Boolean hasSomeFieldField() {
 		return this.someField != null;
 	}
 
@@ -72,7 +72,7 @@ public class SomeClassRequestDTO {
 		return this.someField != null ? this.someField.orElse(def) : def;
 	}
 
-	public String getSome_field() {
+	public String getSomeFiled() {
 		return this.getSomeFiled(null);
 	}
 
