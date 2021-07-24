@@ -8,7 +8,7 @@
 
     <groupId>io.github.asewhy</groupId>
     <artifactId>dto-optional-annotation-preprocessor</artifactId>
-    <version>0.0.2</version>
+    <version>0.0.4</version>
     <url>https://github.com/AseWhy/dto-optional-annotation-preprocessor</url>
 
     <properties>
@@ -53,6 +53,8 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
                     <compilerArgument>-proc:none</compilerArgument>
+                    <source>14</source>
+                    <target>14</target>
                 </configuration>
             </plugin>
             <plugin>

@@ -1,5 +1,7 @@
 package io.github.asewhy.project.dto.optional.preprocessor.annotations;
 
+import io.github.asewhy.project.dto.optional.preprocessor.enums.FieldPolicy;
+
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
@@ -11,4 +13,6 @@ public @interface ResponseDTO {
     Class<?>[] value() default {  };
 
     boolean serializer() default true;
+
+    FieldPolicy policy() default FieldPolicy.SnakeCase;
 }

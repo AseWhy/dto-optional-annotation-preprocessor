@@ -14,11 +14,6 @@ public class DateFormatPreprocessor extends BasePreprocessor<DateFormat> {
     }
 
     @Override
-    protected String getSetterType() {
-        return "String";
-    }
-
-    @Override
     protected String processResult() {
         return "value != null ? new SimpleDateFormat(\"" + (this.annotation.value().isEmpty() ? "yyyy-MM-dd'T'HH:mm:ssZ" : this.annotation.value()) + "\").parse(value) : null";
     }
@@ -44,5 +39,15 @@ public class DateFormatPreprocessor extends BasePreprocessor<DateFormat> {
         } else {
             return null;
         }
+    }
+
+    @Override
+    public Boolean isTargetAnnotated(Element field) {
+        return field.getAnnotation(this.annotation_type) != null;
+    }
+
+    @Override
+    public String getSetterType() {
+        return "java.lang.String";
     }
 }

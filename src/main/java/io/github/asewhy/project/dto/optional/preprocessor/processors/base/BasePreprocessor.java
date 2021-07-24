@@ -1,6 +1,7 @@
 package io.github.asewhy.project.dto.optional.preprocessor.processors.base;
 
 import io.github.asewhy.project.dto.optional.preprocessor.members.FieldContainer;
+import io.github.asewhy.project.dto.optional.preprocessor.members.SettingsBag;
 import io.github.asewhy.project.dto.optional.preprocessor.utils.APUtils;
 
 import javax.lang.model.element.Element;
@@ -19,14 +20,14 @@ public abstract class BasePreprocessor<A extends Annotation> {
     }
 
     protected abstract void processBefore(FieldContainer field, Element target);
-    protected abstract String getSetterType();
     protected abstract String processResult();
     protected abstract List<String> getSetterExceptions();
 
     public Boolean process(
         Element field_element,
         FieldContainer field,
-        Boolean serializer_enabled
+        Boolean serializer_enabled,
+        SettingsBag settings
     ) {
         annotation = field_element.getAnnotation(annotation_type);
 
@@ -34,10 +35,17 @@ public abstract class BasePreprocessor<A extends Annotation> {
             var a_throws = getSetterExceptions();
             var result = processResult();
 
-            writer.print("\tpublic void " + APUtils.toSnakeSetter(field.str_name) + "(" + (this.getSetterType() != null ? this.getSetterType() : field.str_type) + " value) ");
+            writer.println("\t@JsonProperty(\"" + APUtils.convertToCurrentCase(field.str_name, settings.policy) + "\")");
+            writer.print("\tpublic void ");
+            writer.print(APUtils.toSetter(field.str_name));
+            writer.print("(");
+            writer.print(this.getSetterType() != null ? this.getSetterType() : field.str_type);
+            writer.print(" value) ");
 
             if(a_throws != null && a_throws.size() > 0) {
-                writer.println("throws " + String.join(", ", a_throws) + " {");
+                writer.print("throws ");
+                writer.print(String.join(", ", a_throws));
+                writer.println(" {");
             } else {
                 writer.println("{");
             }
@@ -45,9 +53,17 @@ public abstract class BasePreprocessor<A extends Annotation> {
             processBefore(field, field_element);
 
             if(serializer_enabled) {
-                writer.println("\t\tthis." + field.str_name + " = Optional.ofNullable(" + result + ");");
+                writer.print("\t\tthis.");
+                writer.print(field.str_name);
+                writer.print(" = Optional.ofNullable(");
+                writer.print(result);
+                writer.println(");");
             } else {
-                writer.println("\t\tthis." + field.str_name + " = " + result + ";");
+                writer.print("\t\tthis.");
+                writer.print(field.str_name);
+                writer.print(" = ");
+                writer.print(result);
+                writer.println(";");
             }
 
             writer.println("\t}");
@@ -59,4 +75,6 @@ public abstract class BasePreprocessor<A extends Annotation> {
     }
 
     public abstract List<String> getProvidedImports(Element field);
+    public abstract Boolean isTargetAnnotated(Element field);
+    public abstract String getSetterType();
 }

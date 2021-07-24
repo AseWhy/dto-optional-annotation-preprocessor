@@ -11,6 +11,7 @@ import io.github.asewhy.project.dto.optional.preprocessor.utils.APUtils;
 import com.sun.source.tree.StatementTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.Trees;
+import io.github.asewhy.project.dto.optional.preprocessor.utils.CallbackMatcher;
 
 import javax.annotation.processing.*;
 import javax.lang.model.SourceVersion;
@@ -39,6 +40,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
         var env = APUtils.unwrap(processingEnv);
+        assert env != null;
         this.trees = Trees.instance(env);
         this.typeUtils = env.getTypeUtils();
         this.elementUtils = env.getElementUtils();
@@ -58,7 +60,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
             var serializer_enabled = APUtils.classesExists("com.fasterxml.jackson.core.JsonGenerator", "com.fasterxml.jackson.databind.SerializerProvider", "com.fasterxml.jackson.databind.ser.std.StdSerializer", "com.fasterxml.jackson.databind.annotation.JsonSerialize") && annotation.serializer();
 
             if(serializer_enabled) {
-                makeDefaultSerializerFrom(clazz, pkg);
+                makeDefaultSerializerFrom(clazz, pkg, annotation);
             }
 
             makeDefaultResponseFrom(clazz, serializer_enabled, annotation, pkg);
@@ -67,14 +69,17 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         return true;
     }
 
-    private void makeDefaultSerializerFrom(Element clazz, PackageElement pkg) {
+    private void makeDefaultSerializerFrom(Element clazz, PackageElement pkg, ResponseDTO annotation) {
         var bag = new DefaultDatasetClassBag();
+        var settings = new SettingsBag();
         var super_class = ((TypeElement) ((DeclaredType) clazz.asType()).asElement()).getSuperclass();
 
         bag.new_name = getNewSerializerName(clazz.getSimpleName().toString());
         bag.base_class = super_class.getKind() != TypeKind.NONE ? typeUtils.asElement(super_class) : null;
         bag.clazz = clazz;
         bag.pkg = pkg;
+
+        settings.policy = annotation.policy();
 
         for(var current: ElementFilter.fieldsIn(clazz.getEnclosedElements())) {
             var type = getGenerics(current.asType());
@@ -97,7 +102,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         bag.imports.add("com.fasterxml.jackson.core.JsonGenerator");
         bag.imports.add("java.io.IOException");
 
-        makeDefaultSerializer(bag);
+        makeDefaultSerializer(bag, settings);
     }
 
     private void makeDefaultResponseFrom(Element clazz, Boolean serializer_enabled, ResponseDTO annotation, PackageElement pkg) {
@@ -144,7 +149,15 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         }
 
         for(var constructor: APUtils.getTypeMirrorFromAnnotationValue(() -> annotation.value())) {
-            var computed = createConstructorFor((TypeElement) typeUtils.asElement(constructor), fields, bag.new_name, parent_imports, clazz);
+            var computed = createConstructorFor(
+                (TypeElement) typeUtils.asElement(constructor),
+                fields,
+                bag.new_name,
+                parent_imports,
+                clazz,
+                serializer_enabled
+            );
+
             bag.constructors.add(computed.data);
             bag.imports.addAll(computed.imports);
         }
@@ -269,7 +282,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         }
     }
 
-    private void makeDefaultSerializer(DefaultDatasetClassBag bag){
+    private void makeDefaultSerializer(DefaultDatasetClassBag bag, SettingsBag settings){
         try {
             var f = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
 
@@ -291,9 +304,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 pw.println(" * Реализованно от класса @see {@link " + bag.clazz.getSimpleName() + "}");
                 pw.println(" */");
 
-                pw.print("class " + bag.new_name + " extends StdSerializer<" + from_name +"> {");
-
-                pw.print("\n");
+                pw.println("class " + bag.new_name + " extends StdSerializer<" + from_name +"> {");
                 pw.println("\tpublic " + bag.new_name + "() {");
                 pw.println("\t\tsuper((Class) null);");
                 pw.println("\t}");
@@ -305,7 +316,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 pw.print("\n");
                 pw.println("\t@Override");
                 pw.println("\tpublic void serialize(" + from_name + " value, JsonGenerator gen, SerializerProvider provider) throws IOException {");
-                pw.println(buildThree(bag.clazz));
+                pw.println(buildThree(bag.clazz, settings));
                 pw.println("\t}");
 
                 pw.println("}");
@@ -327,10 +338,10 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
     }
 
     private String getNewSerializerName(String input) {
-        return input.endsWith("Serializer") ? input.substring(0, input.length() - 10) + "ResponseSerializer" : input + "ResponseSerializer";
+        return getNewClassName(input) + "Serializer";
     }
 
-    private String buildThree(Element from){
+    private String buildThree(Element from, SettingsBag settings){
         var builder = new StringBuilder();
         var char_trip = "\t\t";
         var from_fields = ElementFilter.fieldsIn(from.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
@@ -339,7 +350,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
         for(var field: from_fields.values()) {
             var getter = APUtils.toGetter(field.getSimpleName().toString());
-            var snake_name = APUtils.cameToSnakeCase(field.getSimpleName().toString());
+            var custom_name = APUtils.convertToCurrentCase(field.getSimpleName().toString(), settings.policy);
             var build_with_field = buildWithTypeOf(field.asType());
 
             builder.append(char_trip).append("if(value.").append("has").append(APUtils.camelCase(field.getSimpleName().toString())).append("Field").append("()) {\n");
@@ -351,7 +362,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                     .append("\t\t")
                     .append(build_with_field)
                     .append("(\"")
-                    .append(snake_name)
+                    .append(custom_name)
                     .append("\", ")
                     .append("value.")
                     .append(getter)
@@ -361,7 +372,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                     .append(char_trip)
                     .append("\t\t")
                     .append("provider.defaultSerializeField(\"")
-                    .append(snake_name)
+                    .append(custom_name)
                     .append("\", ")
                     .append("value.")
                     .append(getter)
@@ -373,7 +384,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 .append("\t} else {\n")
                 .append(char_trip)
                 .append("\t\tgen.writeNullField(\"")
-                .append(snake_name)
+                .append(custom_name)
                 .append("\");\n")
                 .append(char_trip)
                 .append("\t}\n")
@@ -411,7 +422,8 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         HashMap<String, FieldContainer> fields,
         String constructor_name,
         List<String> parent_imports,
-        Element clazz
+        Element clazz,
+        Boolean serializer_enabled
     ) {
         var bag = new ConstructorBag();
         var builder = new StringBuilder();
@@ -477,7 +489,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                             var rest_getter = APUtils.toGetter(mirror_rest);
                             var get_rest = ElementFilter.methodsIn(type.getEnclosedElements()).stream().filter(e -> e.getSimpleName().toString().equals(rest_getter)).findFirst().orElse(null);
 
-                            if (getter == null || getter.getParameters().size() == 0 && ((TypeElement) typeUtils.asElement(Objects.requireNonNull(get_rest).getReturnType())).getQualifiedName().toString().equals(mirror.root_type)) {
+                            if (getter == null || getter.getParameters().size() == 0 && get_rest != null && ((TypeElement) typeUtils.asElement(get_rest.getReturnType())).getQualifiedName().toString().equals(mirror.root_type)) {
                                 builder
                                     .append("\n\t\t\tthis.set")
                                     .append(APUtils.camelCase(mirror.str_name))
@@ -536,12 +548,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                                         if(mirror_declared_type_element_str.equals(return_declared_type_element_str) && return_declared_type_element.getAnnotation(RequestDTO.class) == null) {
                                             switch (type_return_element.getQualifiedName().toString()) {
-                                                case "java.util.LinkedHashSet":
-                                                case "java.util.HashSet":
-                                                case "java.util.EnumSet":
-                                                case "java.util.TreeSet":
-                                                case "java.util.Set":
-                                                    builder
+                                                case "java.util.LinkedHashSet", "java.util.HashSet", "java.util.EnumSet", "java.util.TreeSet", "java.util.Set" -> builder
                                                         .append(skip_null_check ? "" : "\n\t\t\tif(from.")
                                                         .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
                                                         .append(skip_null_check ? "" : "() != null) {")
@@ -555,10 +562,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                         .append(getter_signature)
                                                         .append("().clone());")
                                                     .append(skip_null_check ? "" : "\n\t\t\t}");
-                                                break;
-                                                case "java.util.LinkedList":
-                                                case "java.util.ArrayList":
-                                                case "java.util.List":
+                                                case "java.util.LinkedList", "java.util.ArrayList", "java.util.List" -> {
                                                     builder
                                                         .append(skip_null_check ? "" : "\n\t\t\tif(from.")
                                                         .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
@@ -573,7 +577,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                     .append(skip_null_check ? "" : "\n\t\t\t}");
 
                                                     bag.imports.add("java.util.ArrayList");
-                                                break;
+                                                }
                                             }
                                         } else {
                                             //
@@ -629,18 +633,8 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                 .append(").collect(Collectors.");
 
                                                 switch (type_return_element.getQualifiedName().toString()) {
-                                                    case "java.util.LinkedHashSet":
-                                                    case "java.util.HashSet":
-                                                    case "java.util.EnumSet":
-                                                    case "java.util.TreeSet":
-                                                    case "java.util.Set":
-                                                        builder.append("toSet");
-                                                    break;
-                                                    case "java.util.LinkedList":
-                                                    case "java.util.ArrayList":
-                                                    case "java.util.List":
-                                                        builder.append("toList");
-                                                    break;
+                                                    case "java.util.LinkedHashSet", "java.util.HashSet", "java.util.EnumSet", "java.util.TreeSet", "java.util.Set" -> builder.append("toSet");
+                                                    case "java.util.LinkedList", "java.util.ArrayList", "java.util.List" -> builder.append("toList");
                                                 }
 
                                                 builder.append("()));");
@@ -753,7 +747,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                         var param_name = detectMethodParams(tree.getParameters()).stream().findFirst().orElse(null);
 
                         for(var line: tree.getBody().getStatements()) {
-                            builder.append("\n\t\t\t").append(replaceAllLinks(line, param_name, "from"));
+                            builder.append("\n\t\t\t").append(replaceAllLinks(line, param_name, serializer_enabled));
                         }
 
                         bag.imports.addAll(getIntersectOf(constructor, parent_imports));
@@ -843,8 +837,17 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         return result;
     }
 
-    private String replaceAllLinks(StatementTree tree, String statement, String replacement) {
-        return tree.toString().replaceAll("([^.]|^)(" + statement + ")([^(]|$)", "$1" + replacement + "$3");
+    private String replaceAllLinks(StatementTree tree, String statement, Boolean serializer_enabled) {
+        var result = tree.toString().replaceAll("([^.]|^)(" + statement + ")([^(]|$)", "$1from$3");
+
+        if(serializer_enabled) {
+            result = CallbackMatcher.init("this\\.([aA-zZ0-9_$]+)\\s*=\\s*([^;]*)").findMatches(
+                result,
+                match -> "this." + APUtils.toSetter(match.group(1)) + "(" + match.group(2) + ");"
+            );
+        }
+
+        return result;
     }
 
     private List<String> getIntersectOf(ExecutableElement method, List<String> imports) {

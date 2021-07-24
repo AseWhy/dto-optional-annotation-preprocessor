@@ -15,8 +15,10 @@ public class Annotation {
             name.append("(");
 
             for (var entry : params.entrySet()) {
-                name.append(entry.getKey()).append(" = ").append(entry.getValue());
+                name.append(entry.getKey()).append(" = ").append(entry.getValue()).append(", ");
             }
+
+            name.delete(name.length() - 2, name.length());
 
             name.append(")");
         }

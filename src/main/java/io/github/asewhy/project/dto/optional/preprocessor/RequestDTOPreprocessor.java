@@ -1,12 +1,9 @@
 package io.github.asewhy.project.dto.optional.preprocessor;
 
 import io.github.asewhy.project.dto.optional.preprocessor.annotations.RequestDTO;
+import io.github.asewhy.project.dto.optional.preprocessor.members.*;
 import io.github.asewhy.project.dto.optional.preprocessor.processors.DateFormatPreprocessor;
 import io.github.asewhy.project.dto.optional.preprocessor.processors.base.BasePreprocessor;
-import io.github.asewhy.project.dto.optional.preprocessor.members.Annotation;
-import io.github.asewhy.project.dto.optional.preprocessor.members.DefaultDatasetClassBag;
-import io.github.asewhy.project.dto.optional.preprocessor.members.FieldContainer;
-import io.github.asewhy.project.dto.optional.preprocessor.members.GenericBag;
 import io.github.asewhy.project.dto.optional.preprocessor.utils.APUtils;
 
 import javax.annotation.processing.*;
@@ -22,10 +19,7 @@ import javax.tools.Diagnostic;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @SupportedAnnotationTypes({ "io.github.asewhy.project.dto.optional.preprocessor.annotations.RequestDTO" })
@@ -39,7 +33,9 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
     @Override
     public synchronized void init(ProcessingEnvironment processingEnv) {
         super.init(processingEnv);
+
         var env = APUtils.unwrap(processingEnv);
+
         this.typeUtils = env.getTypeUtils();
         this.elementUtils = env.getElementUtils();
         this.filter = env.getFiler();
@@ -55,14 +51,17 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                 break;
             }
 
-            makeDefaultRequestOf(clazz);
+            var annotation = clazz.getAnnotation(RequestDTO.class);
+
+            makeDefaultRequestOf(clazz, annotation);
         }
 
         return true;
     }
 
-    public void makeDefaultRequestOf(Element clazz) {
+    public void makeDefaultRequestOf(Element clazz, RequestDTO annotation) {
         var bag = new DefaultDatasetClassBag();
+        var settings = new SettingsBag();
         var superClazz = ((TypeElement) ((DeclaredType) clazz.asType()).asElement()).getSuperclass();
 
         bag.fields = new ArrayList<>();
@@ -71,6 +70,8 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
         bag.imports = new ArrayList<>(List.of("java.util.Optional"));
         bag.clazz = clazz;
         bag.pkg = elementUtils.getPackageOf(clazz);
+
+        settings.policy = annotation.policy();
 
         for(var current: ElementFilter.fieldsIn(clazz.getEnclosedElements())) {
             var type = getGenerics(current.asType());
@@ -104,10 +105,12 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
             }
         }
 
-        makeDefaultRequestClass(bag);
+        bag.imports.add("com.fasterxml.jackson.annotation.JsonProperty");
+
+        makeDefaultRequestClass(bag, settings);
     }
 
-    private void makeDefaultRequestClass(DefaultDatasetClassBag bag){
+    private void makeDefaultRequestClass(DefaultDatasetClassBag bag, SettingsBag settings){
         try {
             var f = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
 
@@ -176,7 +179,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
 
                     if(!field.base.getModifiers().contains(Modifier.FINAL)) {
                         try {
-                            writeSetter(field.base, field, pw);
+                            writeSetter(field.base, field, pw, settings);
                         } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
                             e.printStackTrace();
                         }
@@ -243,18 +246,20 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
     private void writeSetter(
         Element field_element,
         FieldContainer field,
-        PrintWriter pw
+        PrintWriter pw,
+        SettingsBag settings
     ) throws NoSuchMethodException, InvocationTargetException, InstantiationException, IllegalAccessException {
         var write_anyone = false;
 
         for(var processor: processors) {
-            if(processor.getConstructor(PrintWriter.class).newInstance(pw).process(field_element, field, true)) {
+            if(processor.getConstructor(PrintWriter.class).newInstance(pw).process(field_element, field, true, settings)) {
                 write_anyone = true;
             }
         }
 
         if(!write_anyone) {
-            pw.println("\tpublic void " + APUtils.toSnakeSetter(field.str_name) + "(" + field.str_type + " value) {");
+            pw.println("\t@JsonProperty(\"" + APUtils.convertToCurrentCase(field.str_name, settings.policy) + "\")");
+            pw.println("\tpublic void " + APUtils.toSetter(field.str_name) + "(" + field.str_type + " value) {");
             pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
             pw.println("\t}");
         }

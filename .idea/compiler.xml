@@ -5,7 +5,7 @@
       <profile default="true" name="Default" enabled="true" />
     </annotationProcessing>
     <bytecodeTargetLevel>
-      <module name="dto-optional-annotation-preprocessor" target="11" />
+      <module name="dto-optional-annotation-preprocessor" target="14" />
     </bytecodeTargetLevel>
   </component>
   <component name="JavacSettings">

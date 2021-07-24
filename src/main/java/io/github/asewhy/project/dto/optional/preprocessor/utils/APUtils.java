@@ -1,16 +1,17 @@
 package io.github.asewhy.project.dto.optional.preprocessor.utils;
 
+import io.github.asewhy.project.dto.optional.preprocessor.enums.FieldPolicy;
+
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.MirroredTypesException;
 import javax.lang.model.type.TypeMirror;
 import javax.tools.Diagnostic;
-import java.lang.reflect.Field;
-import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 /**
  * Стырил https://stackoverflow.com/questions/7687829/java-6-annotation-processing-getting-a-class-from-an-annotation
@@ -50,20 +51,61 @@ public class APUtils {
         return input.substring(0, 1).toUpperCase(Locale.ROOT) + input.substring(1);
     }
 
-    public static String cameToSnakeCase(String input) {
+    public static String toSnakeCase(String input) {
         return input.replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2").replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
+    }
+
+    public static String toSnakeUpperCase(String input) {
+        return input.replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2").replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase(Locale.ROOT);
+    }
+
+    public static String toSnakeLowerCase(String input) {
+        return input.replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2").replaceAll("([a-z])([A-Z])", "$1_$2").toUpperCase(Locale.ROOT);
+    }
+
+    public static String toKebabCase(String input) {
+        return input.replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2").replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase();
+    }
+
+    public static String toKebabLowerCase(String input) {
+        return input.replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2").replaceAll("([a-z])([A-Z])", "$1-$2").toLowerCase(Locale.ROOT);
+    }
+
+    public static String toKebabUpperCase(String input) {
+        return input.replaceAll("([A-Z]+)([A-Z][a-z])", "$1_$2").replaceAll("([a-z])([A-Z])", "$1-$2").toUpperCase(Locale.ROOT);
+    }
+
+    public static String convertToCurrentCase(String input, FieldPolicy policy) {
+        if(policy == null) {
+            return toSnakeCase(input);
+        }
+
+        return switch (policy) {
+            case CamelCase -> Pattern.compile("(?:_|-)([a-z])").matcher(input).replaceAll(m -> m.group(1).toUpperCase());
+            case SnakeCase -> toSnakeCase(input);
+            case LowerSnakeCase -> toSnakeLowerCase(input);
+            case UpperSnakeCase -> toSnakeUpperCase(input);
+            case KebabCase -> toKebabCase(input);
+            case LowerKebabCase -> toKebabLowerCase(input);
+            case UpperKebabCase -> toKebabUpperCase(input);
+            case None -> input;
+        };
     }
 
     public static String toGetter(String field_name) {
         return "get" + camelCase(field_name);
     }
 
-    public static String toSnakeSetter(String field_name) {
-        return "set" + camelCase(cameToSnakeCase(field_name));
+    public static String toCurrentPolicyGetter(String field_name, FieldPolicy policy) {
+        return "get" + convertToCurrentCase(field_name, policy);
     }
 
     public static String toSetter(String field_name) {
         return "set" + camelCase(field_name);
+    }
+
+    public static String toCurrentPolicySetter(String field_name, FieldPolicy policy) {
+        return "set" + convertToCurrentCase(field_name, policy);
     }
 
     /**
@@ -79,11 +121,15 @@ public class APUtils {
      */
     public static ProcessingEnvironment unwrap(ProcessingEnvironment processingEnv) {
         if (Proxy.isProxyClass(processingEnv.getClass())) {
-            InvocationHandler invocationHandler = Proxy.getInvocationHandler(processingEnv);
+            var invocationHandler = Proxy.getInvocationHandler(processingEnv);
+
             try {
-                Field field = invocationHandler.getClass().getDeclaredField("val$delegateTo");
+                var field = invocationHandler.getClass().getDeclaredField("val$delegateTo");
+
                 field.setAccessible(true);
-                Object o = field.get(invocationHandler);
+
+                var o = field.get(invocationHandler);
+
                 if (o instanceof ProcessingEnvironment) {
                     return (ProcessingEnvironment) o;
                 } else {
