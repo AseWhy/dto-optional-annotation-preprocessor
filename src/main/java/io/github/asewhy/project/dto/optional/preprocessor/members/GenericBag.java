@@ -35,13 +35,13 @@ public class GenericBag {
         return annotation.size() > 0 ? annotation.stream().map(Annotation::getRoot).collect(Collectors.joining(" ")) + " " : "";
     }
 
-    public String getRoot() {
+    public String getRoot(Boolean withAnnotations) {
         StringBuilder name = new StringBuilder(this.simpleRoot);
 
         if (this.generics.size() > 0) {
-            name.append("<").append(this.generics.stream().map(GenericBag::getRoot).collect(Collectors.joining(", "))).append(">");
+            name.append("<").append(this.generics.stream().map(e -> e.getRoot(withAnnotations)).collect(Collectors.joining(", "))).append(">");
         }
 
-        return name.toString();
+        return (withAnnotations ? getAnnotations() : "") +  name;
     }
 }

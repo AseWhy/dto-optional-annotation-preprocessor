@@ -36,6 +36,8 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
 
         var env = APUtils.unwrap(processingEnv);
 
+        assert env != null;
+
         this.typeUtils = env.getTypeUtils();
         this.elementUtils = env.getElementUtils();
         this.filter = env.getFiler();
@@ -80,7 +82,8 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                 var result = new FieldContainer();
 
                 result.root_type = type.fullRoot;
-                result.str_type = type.getRoot();
+                result.str_type = type.getRoot(false);
+                result.str_type_annotations = type.getRoot(true);
                 result.str_name = current.getSimpleName().toString();
                 result.str_access = current.getModifiers().stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
                 result.annotations = type.getAnnotations();
@@ -105,6 +108,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
             }
         }
 
+        bag.imports.add("io.github.asewhy.project.dto.optional.preprocessor.runtime.PublicBag");
         bag.imports.add("com.fasterxml.jackson.annotation.JsonProperty");
 
         makeDefaultRequestClass(bag, settings);
@@ -142,7 +146,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
 
                 if(bag.fields.size() > 0) {
                     for (var field : bag.fields) {
-                        pw.println("\t" + field.str_access + " Optional<" + field.annotations + field.str_type + "> " + field.str_name + ";");
+                        pw.println("\t" + field.str_access + " Optional<" + field.str_type_annotations + "> " + field.str_name + ";");
                     }
 
                     pw.print("\n");
@@ -168,14 +172,13 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                     pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
                     pw.println("\t}");
                     pw.print("\n");
-                    pw.println("\tpublic " + field.annotations + field.str_type + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
+                    pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
                     pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
                     pw.println("\t}");
                     pw.print("\n");
-                    pw.println("\tpublic " + field.annotations + field.str_type + " get" + APUtils.camelCase(field.str_name) + "() {");
+                    pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "() {");
                     pw.println("\t\treturn this." + APUtils.toGetter(field.str_name) + "(null);");
-                    pw.println("\t}");
-                    pw.print("\n");
+                    pw.println("\t}\n");
 
                     if(!field.base.getModifiers().contains(Modifier.FINAL)) {
                         try {
@@ -185,6 +188,16 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                         }
                     }
                 }
+
+                pw.println("\n\tpublic PublicBag toBag() {");
+                pw.println("\t\tvar bag = new PublicBag();\n");
+
+                for(var field: bag.fields) {
+                    pw.println("\t\tbag.set(\"" + field.str_name + "\", " + field.str_name + ");");
+                }
+
+                pw.println("\n\t\treturn bag;");
+                pw.println("\t}");
 
                 pw.println("}");
                 pw.flush();

@@ -87,7 +87,8 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 var result = new FieldContainer();
 
                 result.base = current;
-                result.str_type = type.getRoot();
+                result.str_type = type.getRoot(false);
+                result.str_type_annotations = type.getRoot(true);
                 result.root_type = type.fullRoot;
                 result.str_name = current.getSimpleName().toString();
                 result.str_access = current.getModifiers().stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
@@ -124,7 +125,8 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 var result = new FieldContainer();
 
                 result.base = current;
-                result.str_type = type.getRoot();
+                result.str_type = type.getRoot(false);
+                result.str_type_annotations = type.getRoot(true);
                 result.root_type = type.fullRoot;
                 result.str_name = current.getSimpleName().toString();
                 result.str_access = current.getModifiers().stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
@@ -207,9 +209,9 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 if(bag.fields.size() > 0) {
                     for (var field : bag.fields) {
                         if(serializer_enabled) {
-                            pw.println("\t" + field.str_access + " Optional<" + field.annotations + field.str_type + "> " + field.str_name + ";");
+                            pw.println("\t" + field.str_access + " Optional<" + field.str_type_annotations + "> " + field.str_name + ";");
                         } else {
-                            pw.println("\t" + field.str_access + " " + field.annotations + field.str_type + " " + field.str_name + ";");
+                            pw.println("\t" + field.str_access + " " + field.str_type_annotations + " " + field.str_name + ";");
                         }
                     }
 
@@ -244,7 +246,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                     }
 
                     pw.print("\n");
-                    pw.println("\tpublic " + field.annotations + field.str_type + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
+                    pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
 
                     if(serializer_enabled) {
                         pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
@@ -254,12 +256,17 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                     pw.println("\t}");
                     pw.print("\n");
-                    pw.println("\tpublic " + field.annotations + field.str_type + " get" + APUtils.camelCase(field.str_name) + "() {");
+                    pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "() {");
                     pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
                     pw.println("\t}");
                     pw.print("\n");
 
                     if(!field.base.getModifiers().contains(Modifier.FINAL)) {
+                        pw.println("\tpublic void clear" + APUtils.camelCase(field.str_name) + "() {");
+                        pw.println("\t\tthis." + field.str_name + " = null;");
+                        pw.println("\t}");
+                        pw.print("\n");
+
                         if(serializer_enabled) {
                             pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
                             pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
@@ -605,15 +612,16 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                             //
                                             // Если есть аннотация ResponseDTO значит по этому классу будет сгенерирован новый класс, его парсер и будет использовать как дочерний
                                             //
-                                            var request_dto_annotation = mirror_declared_type_element.getAnnotation(ResponseDTO.class);
+                                            var response_dto_annotation = mirror_declared_type_element.getAnnotation(ResponseDTO.class);
 
                                             //
                                             // Если был найден подходящий конструктор или целевого типа есть аннотация responseDTO
                                             //
                                             if(
-                                                base_type.isPresent() || request_dto_annotation != null &&
-                                                    APUtils.getTypeMirrorFromAnnotationValue(() -> request_dto_annotation.value()).stream()
-                                                        .map(e -> ((TypeElement) typeUtils.asElement(e)).getQualifiedName()).anyMatch(e -> e.toString().equals(return_declared_type_element_str))
+                                                base_type.isPresent() || response_dto_annotation != null &&
+                                                    APUtils.getTypeMirrorFromAnnotationValue(() -> response_dto_annotation.value()).stream()
+                                                        .map(e -> ((TypeElement) typeUtils.asElement(e)).getQualifiedName())
+                                                        .anyMatch(e -> e.toString().equals(return_declared_type_element_str))
                                             ) {
                                                 var name = mirror_declared_type_element.getSimpleName().toString();
 
@@ -628,7 +636,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                     .append("(from.")
                                                     .append(APUtils.toGetter(mirror.str_name))
                                                     .append("().stream().map(")
-                                                    .append(request_dto_annotation != null ? getNewClassName(name) : name)
+                                                    .append(response_dto_annotation != null ? getNewClassName(name) : name)
                                                     .append("::new")
                                                 .append(").collect(Collectors.");
 
@@ -654,7 +662,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                 }
                             } else {
                                 //
-                                // Беру тип который нужен, и ищу у него конструктор с типом который есть.
+                                // Беру тип, который нужен, и ищу у него конструктор с типом который есть.
                                 //
                                 var mirror_type = typeUtils.asElement(mirror.base.asType());
 
@@ -747,7 +755,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                         var param_name = detectMethodParams(tree.getParameters()).stream().findFirst().orElse(null);
 
                         for(var line: tree.getBody().getStatements()) {
-                            builder.append("\n\t\t\t").append(replaceAllLinks(line, param_name, serializer_enabled));
+                            builder.append("\n\t\t\t").append(replaceAllLinks(line, param_name, serializer_enabled, clazz.getSimpleName().toString(), constructor_name));
                         }
 
                         bag.imports.addAll(getIntersectOf(constructor, parent_imports));
@@ -837,8 +845,14 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         return result;
     }
 
-    private String replaceAllLinks(StatementTree tree, String statement, Boolean serializer_enabled) {
-        var result = tree.toString().replaceAll("([^.]|^)(" + statement + ")([^(]|$)", "$1from$3");
+    private String replaceAllLinks(StatementTree tree, String statement, Boolean serializer_enabled, String fromClassName, String toClassName) {
+        var value = tree.toString().split("\"");
+
+        for(var i = 0; i < value.length; i++) {
+            value[i] = i % 2 == 0 ? value[i].replaceAll(fromClassName, toClassName) : value[i];
+        }
+
+        var result = String.join("\"", value).replaceAll("([^.]|^)(" + statement + ")([^(]|$)", "$1from$3");
 
         if(serializer_enabled) {
             result = CallbackMatcher.init("this\\.([aA-zZ0-9_$]+)\\s*=\\s*([^;]*)").findMatches(
