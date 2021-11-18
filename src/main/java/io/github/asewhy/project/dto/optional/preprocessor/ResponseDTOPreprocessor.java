@@ -110,10 +110,12 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         var bag = new DefaultDatasetClassBag();
         var parent_imports = getImports(clazz);
         var fields = new HashMap<String, FieldContainer>();
-        var super_class = ((TypeElement) ((DeclaredType) clazz.asType()).asElement()).getSuperclass();
+        var classElement = ((TypeElement) ((DeclaredType) clazz.asType()).asElement());
+        var superClazz = classElement.getSuperclass();
 
         bag.new_name = getNewClassName(clazz.getSimpleName().toString());
-        bag.base_class = super_class.getKind() != TypeKind.NONE ? typeUtils.asElement(super_class) : null;
+        bag.interfaces = classElement.getInterfaces().stream().map(e -> (TypeElement) ((DeclaredType) e).asElement()).collect(Collectors.toList());
+        bag.base_class = superClazz.getKind() != TypeKind.NONE ? typeUtils.asElement(superClazz) : null;
         bag.imports = new ArrayList<>(List.of("java.util.Optional"));
         bag.clazz = clazz;
         bag.pkg = pkg;
@@ -140,6 +142,18 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
         if(bag.base_class != null) {
             var type = typeUtils.asElement(bag.base_class.asType());
+
+            if(type instanceof TypeElement) {
+                var typeElement = (TypeElement) type;
+
+                if(!typeElement.getSimpleName().toString().equals("Object")) {
+                    bag.imports.add(typeElement.getQualifiedName().toString());
+                }
+            }
+        }
+
+        for(var current: bag.interfaces) {
+            var type = typeUtils.asElement(current.asType());
 
             if(type instanceof TypeElement) {
                 var typeElement = (TypeElement) type;
@@ -202,6 +216,10 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                 if(bag.base_class != null && !bag.base_class.getSimpleName().toString().equals("Object")) {
                     pw.print(" extends " + bag.base_class.getSimpleName());
+                }
+
+                if(bag.interfaces.size() > 0) {
+                    pw.print(" implements " + bag.interfaces.stream().map(TypeElement::getSimpleName).collect(Collectors.joining(", ")));
                 }
 
                 pw.println(" {");
