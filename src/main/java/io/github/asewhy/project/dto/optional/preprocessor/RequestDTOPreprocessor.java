@@ -22,8 +22,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 import java.util.stream.Collectors;
 
-@SupportedAnnotationTypes({ "io.github.asewhy.project.dto.optional.preprocessor.annotations.RequestDTO" })
 @SupportedSourceVersion(SourceVersion.RELEASE_6)
+@SupportedAnnotationTypes({ "io.github.asewhy.project.dto.optional.preprocessor.annotations.RequestDTO" })
 public class RequestDTOPreprocessor extends AbstractProcessor {
     protected Types typeUtils;
     protected Elements elementUtils;
@@ -55,20 +55,23 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
 
             var annotation = clazz.getAnnotation(RequestDTO.class);
 
-            makeDefaultRequestOf(clazz, annotation);
+            try {
+                makeDefaultRequestOf(clazz, annotation);
+            } catch (Exception x) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, x.toString());
+            }
         }
 
         return true;
     }
 
-    public void makeDefaultRequestOf(Element clazz, RequestDTO annotation) {
+    public void makeDefaultRequestOf(Element clazz, RequestDTO annotation) throws Exception {
         var bag = new DefaultDatasetClassBag();
         var settings = new SettingsBag();
         var classElement = ((TypeElement) ((DeclaredType) clazz.asType()).asElement());
         var superClazz = classElement.getSuperclass();
 
         bag.fields = new ArrayList<>();
-        bag.interfaces = classElement.getInterfaces().stream().map(e -> (TypeElement) ((DeclaredType) e).asElement()).collect(Collectors.toList());
         bag.new_name = getNewClassName(clazz.getSimpleName().toString());
         bag.base_class = superClazz.getKind() != TypeKind.NONE ? typeUtils.asElement(superClazz) : null;
         bag.imports = new ArrayList<>(List.of("java.util.Optional"));
@@ -110,119 +113,127 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
             }
         }
 
-        for(var current: bag.interfaces) {
-            var type = typeUtils.asElement(current.asType());
-
-            if(type instanceof TypeElement) {
-                var typeElement = (TypeElement) type;
-
-                if(!typeElement.getSimpleName().toString().equals("Object")) {
-                    bag.imports.add(typeElement.getQualifiedName().toString());
-                }
-            }
-        }
-
         bag.imports.add("io.github.asewhy.project.dto.optional.preprocessor.runtime.PublicBag");
         bag.imports.add("com.fasterxml.jackson.annotation.JsonProperty");
 
         makeDefaultRequestClass(bag, settings);
     }
 
-    private void makeDefaultRequestClass(DefaultDatasetClassBag bag, SettingsBag settings){
-        try {
-            var f = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
+    private void makeDefaultRequestClass(DefaultDatasetClassBag bag, SettingsBag settings) throws IOException {
+        var file = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
 
-            try (var w = f.openWriter()) {
-                var pack = bag.pkg.getQualifiedName().toString();
-                var pw = new PrintWriter(w);
+        try (var w = file.openWriter()) {
+            var pack = bag.pkg.getQualifiedName().toString();
+            var pw = new PrintWriter(w);
 
-                pw.println("package " + pack + ";");
-                pw.print("\n");
+            pw.println("package " + pack + ";");
+            pw.print("\n");
 
-                for(var field: bag.imports.stream().filter(e -> !e.startsWith("java.lang.") && e.contains(".")).distinct().collect(Collectors.toList())) {
-                    pw.println("import " + field + ";");
-                }
-
-                pw.println("\n/**");
-                pw.println(" * Сгенерировано автоматически с помощью dto-optional-annotation-preprocessor");
-                pw.println(" * Этот класс нельзя использовать как ответ сервера, из-за того что Optional не дружит с маппером, т.к. не реализует serializable");
-                pw.println(" * Для ответа сервера следует отметить целевой класс аннотацией @ResponseDTO и использовать TargetClassName + ResponseDTO");
-                pw.println(" * Это реализация Data Transfer Object для запроса. Реализованно от класса @see {@link " + bag.clazz.getSimpleName() + "}");
-                pw.println(" */");
-
-                pw.print("public class " + bag.new_name);
-
-                if(bag.base_class != null && !bag.base_class.getSimpleName().toString().equals("Object")) {
-                    pw.print(" extends " + bag.base_class.getSimpleName());
-                }
-
-                if(bag.interfaces.size() > 0) {
-                    pw.print(" implements " + bag.interfaces.stream().map(TypeElement::getSimpleName).collect(Collectors.joining(", ")));
-                }
-
-                pw.println(" {");
-
-                if(bag.fields.size() > 0) {
-                    for (var field : bag.fields) {
-                        pw.println("\t" + field.str_access + " Optional<" + field.str_type_annotations + "> " + field.str_name + ";");
-                    }
-
-                    pw.print("\n");
-                }
-
-                pw.println("\tpublic " + bag.new_name + "() {");
-
-                for(var field: bag.fields) {
-                    var constant = field.base.getConstantValue();
-
-                    pw.print("\t\tthis.");
-                    pw.print(field.str_name);
-                    pw.print(" = ");
-                    pw.print((constant == null ? null : "Optional.ofNullable(" + (constant instanceof String ? "\"" + constant + "\"" : constant) + ")"));
-                    pw.println(";");
-                }
-
-                pw.println("\t}");
-
-                for(var field: bag.fields) {
-                    pw.print("\n");
-                    pw.println("\tpublic Boolean has" + APUtils.camelCase(field.str_name) + "Field() {");
-                    pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
-                    pw.println("\t}");
-                    pw.print("\n");
-                    pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
-                    pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
-                    pw.println("\t}");
-                    pw.print("\n");
-                    pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "() {");
-                    pw.println("\t\treturn this." + APUtils.toGetter(field.str_name) + "(null);");
-                    pw.println("\t}\n");
-
-                    if(!field.base.getModifiers().contains(Modifier.FINAL)) {
-                        try {
-                            writeSetter(field.base, field, pw, settings);
-                        } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }
-
-                pw.println("\n\tpublic PublicBag toBag() {");
-                pw.println("\t\tvar bag = new PublicBag();\n");
-
-                for(var field: bag.fields) {
-                    pw.println("\t\tbag.set(\"" + field.str_name + "\", " + field.str_name + ");");
-                }
-
-                pw.println("\n\t\treturn bag;");
-                pw.println("\t}");
-
-                pw.println("}");
-                pw.flush();
-            } catch (IOException x) {
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, x.toString());
+            for(var field: bag.imports.stream().filter(e -> !e.startsWith("java.lang.") && e.contains(".")).distinct().collect(Collectors.toList())) {
+                pw.println("import " + field + ";");
             }
-        } catch (IOException x) {
+
+            pw.println("\n/**");
+            pw.println(" * Сгенерировано автоматически с помощью dto-optional-annotation-preprocessor");
+            pw.println(" * Этот класс нельзя использовать как ответ сервера, из-за того что Optional не дружит с маппером, т.к. не реализует serializable");
+            pw.println(" * Для ответа сервера следует отметить целевой класс аннотацией @ResponseDTO и использовать TargetClassName + ResponseDTO");
+            pw.println(" * Это реализация Data Transfer Object для запроса. Реализованно от класса @see {@link " + bag.clazz.getSimpleName() + "}");
+            pw.println(" */");
+
+            pw.print("public class " + bag.new_name);
+
+            if(bag.clazz instanceof TypeElement) {
+                var tClazz = (TypeElement) bag.clazz;
+                var modifiers = tClazz.getModifiers();
+                var constructors = ElementFilter.constructorsIn(tClazz.getEnclosedElements());
+
+                if(bag.clazz == null) {
+                    throw new Exception("No executable class . [" + bag.new_name + "]");
+                }
+
+                if(bag.clazz.getSimpleName().toString().equals("Object")) {
+                    throw new Exception("Base class cannot be object. [" + bag.clazz.getSimpleName() + "]");
+                }
+
+                if(modifiers.contains(Modifier.FINAL)) {
+                    throw new Exception("DTO class cannot be final. [" + bag.clazz.getSimpleName() + "]");
+                }
+
+                if(modifiers.contains(Modifier.PRIVATE)) {
+                    throw new Exception("DTO class cannot be private. [" + bag.clazz.getSimpleName() + "]");
+                }
+
+                if(constructors.stream().noneMatch(e -> e.getParameters().size() == 0)) {
+                    throw new Exception("No default constrictor for base class. [" + bag.clazz.getSimpleName() + "]");
+                }
+
+                pw.print(" extends " + bag.clazz.getSimpleName());
+            }
+
+            pw.println(" {");
+
+            if(bag.fields.size() > 0) {
+                for (var field : bag.fields) {
+                    pw.println("\t" + field.str_access + " Optional<" + field.str_type_annotations + "> " + field.str_name + ";");
+                }
+
+                pw.print("\n");
+            }
+
+            pw.println("\tpublic " + bag.new_name + "() {");
+
+            if(bag.clazz instanceof TypeElement) {
+                pw.println("\t\tsuper();\n");
+            }
+
+            for(var field: bag.fields) {
+                var constant = field.base.getConstantValue();
+
+                pw.print("\t\tthis.");
+                pw.print(field.str_name);
+                pw.print(" = ");
+                pw.print((constant == null ? null : "Optional.ofNullable(" + (constant instanceof String ? "\"" + constant + "\"" : constant) + ")"));
+                pw.println(";");
+            }
+
+            pw.println("\t}");
+
+            for(var field: bag.fields) {
+                pw.print("\n");
+                pw.println("\tpublic Boolean has" + APUtils.camelCase(field.str_name) + "Field() {");
+                pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
+                pw.println("\t}");
+                pw.print("\n");
+                pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
+                pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
+                pw.println("\t}");
+                pw.print("\n");
+                pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "() {");
+                pw.println("\t\treturn this." + APUtils.toGetter(field.str_name) + "(null);");
+                pw.println("\t}\n");
+
+                if(!field.base.getModifiers().contains(Modifier.FINAL)) {
+                    try {
+                        writeSetter(field.base, field, pw, settings);
+                    } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+
+            pw.println("\n\tpublic PublicBag toBag() {");
+            pw.println("\t\tvar bag = new PublicBag();\n");
+
+            for(var field: bag.fields) {
+                pw.println("\t\tbag.set(\"" + field.str_name + "\", " + field.str_name + ");");
+            }
+
+            pw.println("\n\t\treturn bag;");
+            pw.println("\t}");
+
+            pw.println("}");
+            pw.flush();
+        } catch (Exception x) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, x.toString());
         }
     }

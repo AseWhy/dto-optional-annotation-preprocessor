@@ -59,11 +59,15 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
             var annotation = clazz.getAnnotation(ResponseDTO.class);
             var serializer_enabled = APUtils.classesExists("com.fasterxml.jackson.core.JsonGenerator", "com.fasterxml.jackson.databind.SerializerProvider", "com.fasterxml.jackson.databind.ser.std.StdSerializer", "com.fasterxml.jackson.databind.annotation.JsonSerialize") && annotation.serializer();
 
-            if(serializer_enabled) {
-                makeDefaultSerializerFrom(clazz, pkg, annotation);
-            }
+            try {
+                if (serializer_enabled) {
+                    makeDefaultSerializerFrom(clazz, pkg, annotation);
+                }
 
-            makeDefaultResponseFrom(clazz, serializer_enabled, annotation, pkg);
+                makeDefaultResponseFrom(clazz, serializer_enabled, annotation, pkg);
+            } catch (Exception e) {
+                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, e.toString());
+            }
         }
 
         return true;
@@ -106,7 +110,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         makeDefaultSerializer(bag, settings);
     }
 
-    private void makeDefaultResponseFrom(Element clazz, Boolean serializer_enabled, ResponseDTO annotation, PackageElement pkg) {
+    private void makeDefaultResponseFrom(Element clazz, Boolean serializer_enabled, ResponseDTO annotation, PackageElement pkg) throws Exception {
         var bag = new DefaultDatasetClassBag();
         var parent_imports = getImports(clazz);
         var fields = new HashMap<String, FieldContainer>();
@@ -114,7 +118,6 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         var superClazz = classElement.getSuperclass();
 
         bag.new_name = getNewClassName(clazz.getSimpleName().toString());
-        bag.interfaces = classElement.getInterfaces().stream().map(e -> (TypeElement) ((DeclaredType) e).asElement()).collect(Collectors.toList());
         bag.base_class = superClazz.getKind() != TypeKind.NONE ? typeUtils.asElement(superClazz) : null;
         bag.imports = new ArrayList<>(List.of("java.util.Optional"));
         bag.clazz = clazz;
@@ -135,6 +138,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 result.annotations = type.getAnnotations();
 
                 fields.put(result.str_name, result);
+
                 bag.imports.addAll(type.getImports());
                 bag.fields.add(result);
             }
@@ -142,18 +146,6 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
         if(bag.base_class != null) {
             var type = typeUtils.asElement(bag.base_class.asType());
-
-            if(type instanceof TypeElement) {
-                var typeElement = (TypeElement) type;
-
-                if(!typeElement.getSimpleName().toString().equals("Object")) {
-                    bag.imports.add(typeElement.getQualifiedName().toString());
-                }
-            }
-        }
-
-        for(var current: bag.interfaces) {
-            var type = typeUtils.asElement(current.asType());
 
             if(type instanceof TypeElement) {
                 var typeElement = (TypeElement) type;
@@ -187,122 +179,142 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         makeDefaultResponseClass(bag, serializer_enabled);
     }
 
-    private void makeDefaultResponseClass(DefaultDatasetClassBag bag, Boolean serializer_enabled){
-        try {
-            var f = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
+    private void makeDefaultResponseClass(DefaultDatasetClassBag bag, Boolean serializer_enabled) throws IOException {
+        var file = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
 
-            try (var w = f.openWriter()) {
-                var pack = bag.pkg.getQualifiedName().toString();
-                var pw = new PrintWriter(w);
+        try (var w = file.openWriter()) {
+            var pack = bag.pkg.getQualifiedName().toString();
+            var pw = new PrintWriter(w);
 
-                pw.println("package " + pack + ";");
-                pw.print("\n");
+            pw.println("package " + pack + ";");
+            pw.print("\n");
 
-                for(var field: bag.imports.stream().filter(e -> !e.startsWith("java.lang.") && e.contains(".")).distinct().collect(Collectors.toList())) {
-                    pw.println("import " + field + ";");
+            for(var field: bag.imports.stream().filter(e -> !e.startsWith("java.lang.") && e.contains(".")).distinct().collect(Collectors.toList())) {
+                pw.println("import " + field + ";");
+            }
+
+            pw.println("\n/**");
+            pw.println(" * Сгенерировано автоматически с помощью dto-optional-annotation-preprocessor");
+            pw.println(" * Этот класс можно использовать как ответ сервера, тут предусмотрен свой сериализатор");
+            pw.println(" * Это реализация Data Transfer Object для ответа. Реализованно от класса @see {@link " + bag.clazz.getSimpleName() + "}");
+            pw.println(" */");
+
+            if(serializer_enabled) {
+                pw.println("@JsonSerialize(using = " + getNewSerializerName(bag.clazz.getSimpleName().toString()) + ".class)");
+            }
+
+            pw.print("public class " + bag.new_name);
+
+            if(bag.clazz instanceof TypeElement) {
+                var tClazz = (TypeElement) bag.clazz;
+                var modifiers = tClazz.getModifiers();
+                var constructors = ElementFilter.constructorsIn(tClazz.getEnclosedElements());
+
+                if(bag.clazz == null) {
+                    throw new Exception("No executable class . [" + bag.new_name + "]");
                 }
 
-                pw.println("\n/**");
-                pw.println(" * Сгенерировано автоматически с помощью dto-optional-annotation-preprocessor");
-                pw.println(" * Этот класс можно использовать как ответ сервера, тут предусмотрен свой сериализатор");
-                pw.println(" * Это реализация Data Transfer Object для ответа. Реализованно от класса @see {@link " + bag.clazz.getSimpleName() + "}");
-                pw.println(" */");
+                if(bag.clazz.getSimpleName().toString().equals("Object")) {
+                    throw new Exception("Base class cannot be object. [" + bag.clazz.getSimpleName() + "]");
+                }
+
+                if(modifiers.contains(Modifier.FINAL)) {
+                    throw new Exception("DTO class cannot be final. [" + bag.clazz.getSimpleName() + "]");
+                }
+
+                if(modifiers.contains(Modifier.PRIVATE)) {
+                    throw new Exception("DTO class cannot be private. [" + bag.clazz.getSimpleName() + "]");
+                }
+
+                if(constructors.stream().noneMatch(e -> e.getParameters().size() == 0)) {
+                    throw new Exception("No default constrictor for base class. [" + bag.clazz.getSimpleName() + "]");
+                }
+
+                pw.print(" extends " + bag.clazz.getSimpleName());
+            }
+
+            pw.println(" {");
+
+            if(bag.fields.size() > 0) {
+                for (var field : bag.fields) {
+                    if(serializer_enabled) {
+                        pw.println("\t" + field.str_access + " Optional<" + field.str_type_annotations + "> " + field.str_name + ";");
+                    } else {
+                        pw.println("\t" + field.str_access + " " + field.str_type_annotations + " " + field.str_name + ";");
+                    }
+                }
+
+                pw.print("\n");
+            }
+
+            pw.println("\tpublic " + bag.new_name + "() {");
+
+            if(bag.clazz instanceof TypeElement) {
+                pw.println("\t\tsuper();\n");
+            }
+
+            for(var field: bag.fields) {
+                var constant = field.base.getConstantValue();
+
+                pw.print("\t\tthis.");
+                pw.print(field.str_name);
+                pw.print(" = ");
+                pw.print((constant == null ? null : (serializer_enabled ? "Optional.ofNullable(" : "") + (constant instanceof String ? "\"" + constant + "\"" : constant) + (serializer_enabled ? ")" : "")));
+                pw.println(";");
+            }
+
+            pw.println("\t}");
+
+            for(var constructor: bag.constructors) {
+                pw.print("\n");
+                pw.println(constructor);
+            }
+
+            for(var field: bag.fields) {
+                if(serializer_enabled) {
+                    pw.print("\n");
+                    pw.println("\tpublic Boolean has" + APUtils.camelCase(field.str_name) + "Field() {");
+                    pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
+                    pw.println("\t}");
+                }
+
+                pw.print("\n");
+                pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
 
                 if(serializer_enabled) {
-                    pw.println("@JsonSerialize(using = " + getNewSerializerName(bag.clazz.getSimpleName().toString()) + ".class)");
-                }
-
-                pw.print("public class " + bag.new_name);
-
-                if(bag.base_class != null && !bag.base_class.getSimpleName().toString().equals("Object")) {
-                    pw.print(" extends " + bag.base_class.getSimpleName());
-                }
-
-                if(bag.interfaces.size() > 0) {
-                    pw.print(" implements " + bag.interfaces.stream().map(TypeElement::getSimpleName).collect(Collectors.joining(", ")));
-                }
-
-                pw.println(" {");
-
-                if(bag.fields.size() > 0) {
-                    for (var field : bag.fields) {
-                        if(serializer_enabled) {
-                            pw.println("\t" + field.str_access + " Optional<" + field.str_type_annotations + "> " + field.str_name + ";");
-                        } else {
-                            pw.println("\t" + field.str_access + " " + field.str_type_annotations + " " + field.str_name + ";");
-                        }
-                    }
-
-                    pw.print("\n");
-                }
-
-                pw.println("\tpublic " + bag.new_name + "() {");
-
-                for(var field: bag.fields) {
-                    var constant = field.base.getConstantValue();
-
-                    pw.print("\t\tthis.");
-                    pw.print(field.str_name);
-                    pw.print(" = ");
-                    pw.print((constant == null ? null : (serializer_enabled ? "Optional.ofNullable(" : "") + (constant instanceof String ? "\"" + constant + "\"" : constant) + (serializer_enabled ? ")" : "")));
-                    pw.println(";");
+                    pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
+                } else {
+                    pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + " : def;");
                 }
 
                 pw.println("\t}");
+                pw.print("\n");
+                pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "() {");
+                pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
+                pw.println("\t}");
+                pw.print("\n");
 
-                for(var constructor: bag.constructors) {
+                if(!field.base.getModifiers().contains(Modifier.FINAL)) {
+                    pw.println("\tpublic void clear" + APUtils.camelCase(field.str_name) + "() {");
+                    pw.println("\t\tthis." + field.str_name + " = null;");
+                    pw.println("\t}");
                     pw.print("\n");
-                    pw.println(constructor);
-                }
 
-                for(var field: bag.fields) {
                     if(serializer_enabled) {
-                        pw.print("\n");
-                        pw.println("\tpublic Boolean has" + APUtils.camelCase(field.str_name) + "Field() {");
-                        pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
+                        pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
+                        pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
                         pw.println("\t}");
-                    }
-
-                    pw.print("\n");
-                    pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
-
-                    if(serializer_enabled) {
-                        pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
                     } else {
-                        pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + " : def;");
-                    }
-
-                    pw.println("\t}");
-                    pw.print("\n");
-                    pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "() {");
-                    pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
-                    pw.println("\t}");
-                    pw.print("\n");
-
-                    if(!field.base.getModifiers().contains(Modifier.FINAL)) {
-                        pw.println("\tpublic void clear" + APUtils.camelCase(field.str_name) + "() {");
-                        pw.println("\t\tthis." + field.str_name + " = null;");
+                        pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
+                        pw.println("\t\tthis." + field.str_name + " = value;");
                         pw.println("\t}");
-                        pw.print("\n");
-
-                        if(serializer_enabled) {
-                            pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
-                            pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
-                            pw.println("\t}");
-                        } else {
-                            pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
-                            pw.println("\t\tthis." + field.str_name + " = value;");
-                            pw.println("\t}");
-                        }
                     }
                 }
-
-                pw.println("}");
-                pw.flush();
-            } catch (IOException x) {
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, x.toString());
             }
-        } catch (IOException x) {
+
+            pw.println("}");
+            pw.flush();
+        } catch (Exception x) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, x.toString());
         }
     }
@@ -331,7 +343,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                 pw.println("class " + bag.new_name + " extends StdSerializer<" + from_name +"> {");
                 pw.println("\tpublic " + bag.new_name + "() {");
-                pw.println("\t\tsuper((Class) null);");
+                pw.println("\t\tsuper(" + from_name + ".class);");
                 pw.println("\t}");
                 pw.print("\n");
                 pw.println("\tpublic " + bag.new_name + "(Class<" + from_name + "> from) {");
