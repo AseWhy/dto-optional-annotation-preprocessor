@@ -68,67 +68,41 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
     public void makeDefaultRequestOf(Element clazz, RequestDTO annotation) throws Exception {
         var bag = new DefaultDatasetClassBag();
         var settings = new SettingsBag();
-        var typeCazz = (TypeElement) ((DeclaredType) clazz.asType()).asElement();
-        var superClazz = typeCazz.getSuperclass();
-        var clazzModifiers = clazz.getModifiers();
-        var methods = ElementFilter.methodsIn(typeCazz.getEnclosedElements());
+        var classElement = ((TypeElement) ((DeclaredType) clazz.asType()).asElement());
+        var superClazz = classElement.getSuperclass();
 
         bag.fields = new ArrayList<>();
-        bag.newName = getNewClassName(clazz.getSimpleName().toString());
-        bag.baseClass = superClazz.getKind() != TypeKind.NONE ? typeUtils.asElement(superClazz) : null;
+        bag.new_name = getNewClassName(clazz.getSimpleName().toString());
+        bag.base_class = superClazz.getKind() != TypeKind.NONE ? typeUtils.asElement(superClazz) : null;
         bag.imports = new ArrayList<>(List.of("java.util.Optional"));
         bag.clazz = clazz;
         bag.pkg = elementUtils.getPackageOf(clazz);
 
         settings.policy = annotation.policy();
-        settings.createBag = annotation.createBag();
-
-        if(!clazzModifiers.contains(Modifier.ABSTRACT)) {
-            throw new Exception("DTO class must be abstract. [" + bag.clazz.getSimpleName() + "]");
-        }
 
         for(var current: ElementFilter.fieldsIn(clazz.getEnclosedElements())) {
-            var currentTypeMirror = current.asType();
-            var currentType = typeUtils.asElement(currentTypeMirror);
-            var type = getGenerics(currentTypeMirror);
+            var type = getGenerics(current.asType());
 
             if (type != null) {
                 var result = new FieldContainer();
-                var modifiers = current.getModifiers();
 
-                result.rootType = type.fullRoot;
-                result.strType = type.getRoot(false);
-                result.strTypeAnnotations = type.getRoot(true);
-                result.strName = current.getSimpleName().toString();
-                result.strAccess = modifiers.stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
+                result.root_type = type.fullRoot;
+                result.str_type = type.getRoot(false);
+                result.str_type_annotations = type.getRoot(true);
+                result.str_name = current.getSimpleName().toString();
+                result.str_access = current.getModifiers().stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
                 result.annotations = type.getAnnotations();
                 result.base = current;
 
                 bag.fields.add(result);
                 bag.imports.addAll(type.getImports());
-
-                if(currentType instanceof TypeElement) {
-                    var currentTypeElement = (TypeElement) currentType;
-                    var setterType = currentTypeElement.getSimpleName().toString();
-
-                    result.hasSuperGetter = APUtils.hasOverride(typeUtils, methods, "get" + APUtils.camelCase(result.strName), setterType);
-                    result.hasSuperSetter = APUtils.hasOverride(typeUtils, methods, "set" + APUtils.camelCase(result.strName), "void", setterType);
-
-                    if(result.hasSuperGetter || result.hasSuperSetter) {
-                        bag.imports.add("java.lang.Override");
-                    }
-                }
-
-                if(modifiers.contains(Modifier.PUBLIC)) {
-                    throw new Exception("DTO field cannot be public. [" + bag.clazz.getSimpleName() + "]");
-                }
             }
 
             bag.imports.addAll(getFieldConversionImports(current));
         }
 
-        if(bag.baseClass != null) {
-            var type = typeUtils.asElement(bag.baseClass.asType());
+        if(bag.base_class != null) {
+            var type = typeUtils.asElement(bag.base_class.asType());
 
             if(type instanceof TypeElement) {
                 var typeElement = (TypeElement) type;
@@ -139,17 +113,14 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
             }
         }
 
-        if(settings.createBag) {
-            bag.imports.add("io.github.asewhy.project.dto.optional.preprocessor.runtime.PublicBag");
-        }
-
+        bag.imports.add("io.github.asewhy.project.dto.optional.preprocessor.runtime.PublicBag");
         bag.imports.add("com.fasterxml.jackson.annotation.JsonProperty");
 
         makeDefaultRequestClass(bag, settings);
     }
 
     private void makeDefaultRequestClass(DefaultDatasetClassBag bag, SettingsBag settings) throws IOException {
-        var file = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.newName);
+        var file = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
 
         try (var w = file.openWriter()) {
             var pack = bag.pkg.getQualifiedName().toString();
@@ -169,7 +140,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
             pw.println(" * Это реализация Data Transfer Object для запроса. Реализованно от класса @see {@link " + bag.clazz.getSimpleName() + "}");
             pw.println(" */");
 
-            pw.print("public class " + bag.newName);
+            pw.print("public class " + bag.new_name);
 
             if(bag.clazz instanceof TypeElement) {
                 var tClazz = (TypeElement) bag.clazz;
@@ -177,7 +148,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                 var constructors = ElementFilter.constructorsIn(tClazz.getEnclosedElements());
 
                 if(bag.clazz == null) {
-                    throw new Exception("No executable class . [" + bag.newName + "]");
+                    throw new Exception("No executable class . [" + bag.new_name + "]");
                 }
 
                 if(bag.clazz.getSimpleName().toString().equals("Object")) {
@@ -203,13 +174,13 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
 
             if(bag.fields.size() > 0) {
                 for (var field : bag.fields) {
-                    pw.println("\t" + field.strAccess + " Optional<" + field.strTypeAnnotations + "> " + field.strName + ";");
+                    pw.println("\t" + field.str_access + " Optional<" + field.str_type_annotations + "> " + field.str_name + ";");
                 }
 
                 pw.print("\n");
             }
 
-            pw.println("\tpublic " + bag.newName + "() {");
+            pw.println("\tpublic " + bag.new_name + "() {");
 
             if(bag.clazz instanceof TypeElement) {
                 pw.println("\t\tsuper();\n");
@@ -219,7 +190,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
                 var constant = field.base.getConstantValue();
 
                 pw.print("\t\tthis.");
-                pw.print(field.strName);
+                pw.print(field.str_name);
                 pw.print(" = ");
                 pw.print((constant == null ? null : "Optional.ofNullable(" + (constant instanceof String ? "\"" + constant + "\"" : constant) + ")"));
                 pw.println(";");
@@ -229,43 +200,36 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
 
             for(var field: bag.fields) {
                 pw.print("\n");
-                pw.println("\tpublic Boolean has" + APUtils.camelCase(field.strName) + "Field() {");
-                pw.println("\t\treturn this." + field.strName + " != null ? true : false;");
+                pw.println("\tpublic Boolean has" + APUtils.camelCase(field.str_name) + "Field() {");
+                pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
                 pw.println("\t}");
                 pw.print("\n");
-                pw.println("\tpublic " + field.strTypeAnnotations + " get" + APUtils.camelCase(field.strName) + "(" + field.strType + " def) {");
-                pw.println("\t\treturn this." + field.strName + " != null ? this." + field.strName + ".orElse(def) : def;");
+                pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
+                pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
                 pw.println("\t}");
                 pw.print("\n");
-
-                if(field.hasSuperGetter) {
-                    pw.println("\t@Override");
-                }
-
-                pw.println("\tpublic " + field.strTypeAnnotations + " get" + APUtils.camelCase(field.strName) + "() {");
-                pw.println("\t\treturn this." + APUtils.toGetter(field.strName) + "(null);");
+                pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "() {");
+                pw.println("\t\treturn this." + APUtils.toGetter(field.str_name) + "(null);");
                 pw.println("\t}\n");
 
                 if(!field.base.getModifiers().contains(Modifier.FINAL)) {
                     try {
-                        writeSetter(field, pw, settings);
+                        writeSetter(field.base, field, pw, settings);
                     } catch (NoSuchMethodException | InvocationTargetException | InstantiationException | IllegalAccessException e) {
                         e.printStackTrace();
                     }
                 }
             }
 
-            if(settings.createBag) {
-                pw.println("\n\tpublic PublicBag toBag() {");
-                pw.println("\t\tvar bag = new PublicBag();\n");
+            pw.println("\n\tpublic PublicBag toBag() {");
+            pw.println("\t\tvar bag = new PublicBag();\n");
 
-                for (var field : bag.fields) {
-                    pw.println("\t\tbag.set(\"" + field.strName + "\", " + field.strName + ");");
-                }
-
-                pw.println("\n\t\treturn bag;");
-                pw.println("\t}");
+            for(var field: bag.fields) {
+                pw.println("\t\tbag.set(\"" + field.str_name + "\", " + field.str_name + ");");
             }
+
+            pw.println("\n\t\treturn bag;");
+            pw.println("\t}");
 
             pw.println("}");
             pw.flush();
@@ -322,6 +286,7 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
     }
 
     private void writeSetter(
+        Element field_element,
         FieldContainer field,
         PrintWriter pw,
         SettingsBag settings
@@ -329,24 +294,15 @@ public class RequestDTOPreprocessor extends AbstractProcessor {
         var write_anyone = false;
 
         for(var processor: processors) {
-            if(processor.getConstructor(PrintWriter.class).newInstance(pw).process(field.base, field, true, settings)) {
+            if(processor.getConstructor(PrintWriter.class).newInstance(pw).process(field_element, field, true, settings)) {
                 write_anyone = true;
             }
         }
 
         if(!write_anyone) {
-            if(field.hasSuperSetter) {
-                pw.println("\t@Override");
-            }
-
-            pw.println("\t@JsonProperty(\"" + APUtils.convertToCurrentCase(field.strName, settings.policy) + "\")");
-            pw.println("\tpublic void " + APUtils.toSetter(field.strName) + "(" + field.strType + " value) {");
-            pw.println("\t\tthis." + field.strName + " = Optional.ofNullable(value);");
-
-            if(field.hasSuperSetter) {
-                pw.println("\t\tsuper.set" + APUtils.camelCase(field.strName) + "(value);");
-            }
-
+            pw.println("\t@JsonProperty(\"" + APUtils.convertToCurrentCase(field.str_name, settings.policy) + "\")");
+            pw.println("\tpublic void " + APUtils.toSetter(field.str_name) + "(" + field.str_type + " value) {");
+            pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
             pw.println("\t}");
         }
     }

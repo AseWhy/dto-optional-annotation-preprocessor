@@ -11,6 +11,4 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.SOURCE)
 public @interface RequestDTO {
     FieldPolicy policy() default FieldPolicy.SnakeCase;
-
-    boolean createBag() default false;
 }
