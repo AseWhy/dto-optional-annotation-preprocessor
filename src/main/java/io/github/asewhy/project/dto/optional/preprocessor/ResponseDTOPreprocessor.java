@@ -73,32 +73,59 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         return true;
     }
 
-    private void makeDefaultSerializerFrom(Element clazz, PackageElement pkg, ResponseDTO annotation) {
+    private void makeDefaultSerializerFrom(Element clazz, PackageElement pkg, ResponseDTO annotation) throws Exception {
         var bag = new DefaultDatasetClassBag();
         var settings = new SettingsBag();
-        var super_class = ((TypeElement) ((DeclaredType) clazz.asType()).asElement()).getSuperclass();
+        var typeCazz = (TypeElement) ((DeclaredType) clazz.asType()).asElement();
+        var superClass = typeCazz.getSuperclass();
+        var clazzModifiers = clazz.getModifiers();
+        var methods = ElementFilter.methodsIn(typeCazz.getEnclosedElements());
 
-        bag.new_name = getNewSerializerName(clazz.getSimpleName().toString());
-        bag.base_class = super_class.getKind() != TypeKind.NONE ? typeUtils.asElement(super_class) : null;
+        bag.newName = getNewSerializerName(clazz.getSimpleName().toString());
+        bag.baseClass = superClass.getKind() != TypeKind.NONE ? typeUtils.asElement(superClass) : null;
         bag.clazz = clazz;
         bag.pkg = pkg;
 
         settings.policy = annotation.policy();
 
+        if(!clazzModifiers.contains(Modifier.ABSTRACT)) {
+            throw new Exception("DTO class must be abstract. [" + bag.clazz.getSimpleName() + "]");
+        }
+
         for(var current: ElementFilter.fieldsIn(clazz.getEnclosedElements())) {
-            var type = getGenerics(current.asType());
+            var currentTypeMirror = current.asType();
+            var currentType = typeUtils.asElement(currentTypeMirror);
+            var type = getGenerics(currentTypeMirror);
+
             if (type != null) {
                 var result = new FieldContainer();
+                var modifiers = current.getModifiers();
 
                 result.base = current;
-                result.str_type = type.getRoot(false);
-                result.str_type_annotations = type.getRoot(true);
-                result.root_type = type.fullRoot;
-                result.str_name = current.getSimpleName().toString();
-                result.str_access = current.getModifiers().stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
+                result.strType = type.getRoot(false);
+                result.strTypeAnnotations = type.getRoot(true);
+                result.rootType = type.fullRoot;
+                result.strName = current.getSimpleName().toString();
+                result.strAccess = modifiers.stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
                 result.annotations = type.getAnnotations();
 
+                if(currentType instanceof TypeElement) {
+                    var currentTypeElement = (TypeElement) currentType;
+                    var setterType = currentTypeElement.getSimpleName().toString();
+
+                    result.hasSuperGetter = APUtils.hasOverride(typeUtils, methods, "get" + APUtils.camelCase(result.strName), setterType);
+                    result.hasSuperSetter = APUtils.hasOverride(typeUtils, methods, "set" + APUtils.camelCase(result.strName), "void", setterType);
+
+                    if(result.hasSuperGetter || result.hasSuperSetter) {
+                        bag.imports.add("java.lang.Override");
+                    }
+                }
+
                 bag.fields.add(result);
+
+                if(modifiers.contains(Modifier.PUBLIC)) {
+                    throw new Exception("DTO field cannot be public. [" + bag.clazz.getSimpleName() + "]");
+                }
             }
         }
 
@@ -114,38 +141,64 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         var bag = new DefaultDatasetClassBag();
         var parent_imports = getImports(clazz);
         var fields = new HashMap<String, FieldContainer>();
-        var classElement = ((TypeElement) ((DeclaredType) clazz.asType()).asElement());
-        var superClazz = classElement.getSuperclass();
+        var typeCazz = (TypeElement) ((DeclaredType) clazz.asType()).asElement();
+        var clazzModifiers = clazz.getModifiers();
+        var superClazz = typeCazz.getSuperclass();
+        var methods = ElementFilter.methodsIn(typeCazz.getEnclosedElements());
 
-        bag.new_name = getNewClassName(clazz.getSimpleName().toString());
-        bag.base_class = superClazz.getKind() != TypeKind.NONE ? typeUtils.asElement(superClazz) : null;
+        bag.newName = getNewClassName(clazz.getSimpleName().toString());
+        bag.baseClass = superClazz.getKind() != TypeKind.NONE ? typeUtils.asElement(superClazz) : null;
         bag.imports = new ArrayList<>(List.of("java.util.Optional"));
         bag.clazz = clazz;
         bag.pkg = pkg;
 
+        if(!clazzModifiers.contains(Modifier.ABSTRACT)) {
+            throw new Exception("DTO class must be abstract. [" + bag.clazz.getSimpleName() + "]");
+        }
+
         for(var current: ElementFilter.fieldsIn(clazz.getEnclosedElements())) {
-            var type = getGenerics(current.asType());
+            var currentTypeMirror = current.asType();
+            var currentType = typeUtils.asElement(currentTypeMirror);
+            var type = getGenerics(currentTypeMirror);
 
             if (type != null) {
                 var result = new FieldContainer();
+                var modifiers = current.getModifiers();
 
                 result.base = current;
-                result.str_type = type.getRoot(false);
-                result.str_type_annotations = type.getRoot(true);
-                result.root_type = type.fullRoot;
-                result.str_name = current.getSimpleName().toString();
-                result.str_access = current.getModifiers().stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
+                result.strType = type.getRoot(false);
+                result.strTypeAnnotations = type.getRoot(true);
+                result.rootType = type.fullRoot;
+                result.strName = current.getSimpleName().toString();
+                result.strAccess = current.getModifiers().stream().map(e -> e.toString().toLowerCase(Locale.ROOT)).collect(Collectors.joining(" "));
                 result.annotations = type.getAnnotations();
 
-                fields.put(result.str_name, result);
+                fields.put(result.strName, result);
 
                 bag.imports.addAll(type.getImports());
+
+                if(currentType instanceof TypeElement) {
+                    var currentTypeElement = (TypeElement) currentType;
+                    var setterType = currentTypeElement.getSimpleName().toString();
+
+                    result.hasSuperGetter = APUtils.hasOverride(typeUtils, methods, "get" + APUtils.camelCase(result.strName), setterType);
+                    result.hasSuperSetter = APUtils.hasOverride(typeUtils, methods, "set" + APUtils.camelCase(result.strName), "void", setterType);
+
+                    if(result.hasSuperGetter || result.hasSuperSetter) {
+                        bag.imports.add("java.lang.Override");
+                    }
+                }
+
                 bag.fields.add(result);
+
+                if(modifiers.contains(Modifier.PUBLIC)) {
+                    throw new Exception("DTO field cannot be public. [" + bag.clazz.getSimpleName() + "]");
+                }
             }
         }
 
-        if(bag.base_class != null) {
-            var type = typeUtils.asElement(bag.base_class.asType());
+        if(bag.baseClass != null) {
+            var type = typeUtils.asElement(bag.baseClass.asType());
 
             if(type instanceof TypeElement) {
                 var typeElement = (TypeElement) type;
@@ -156,11 +209,11 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
             }
         }
 
-        for(var constructor: APUtils.getTypeMirrorFromAnnotationValue(() -> annotation.value())) {
+        for(var constructor: APUtils.getTypeMirrorFromAnnotationValue(annotation::value)) {
             var computed = createConstructorFor(
                 (TypeElement) typeUtils.asElement(constructor),
                 fields,
-                bag.new_name,
+                bag.newName,
                 parent_imports,
                 clazz,
                 serializer_enabled
@@ -180,7 +233,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
     }
 
     private void makeDefaultResponseClass(DefaultDatasetClassBag bag, Boolean serializer_enabled) throws IOException {
-        var file = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
+        var file = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.newName);
 
         try (var w = file.openWriter()) {
             var pack = bag.pkg.getQualifiedName().toString();
@@ -203,7 +256,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 pw.println("@JsonSerialize(using = " + getNewSerializerName(bag.clazz.getSimpleName().toString()) + ".class)");
             }
 
-            pw.print("public class " + bag.new_name);
+            pw.print("public class " + bag.newName);
 
             if(bag.clazz instanceof TypeElement) {
                 var tClazz = (TypeElement) bag.clazz;
@@ -211,7 +264,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 var constructors = ElementFilter.constructorsIn(tClazz.getEnclosedElements());
 
                 if(bag.clazz == null) {
-                    throw new Exception("No executable class . [" + bag.new_name + "]");
+                    throw new Exception("No executable class . [" + bag.newName + "]");
                 }
 
                 if(bag.clazz.getSimpleName().toString().equals("Object")) {
@@ -238,16 +291,16 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
             if(bag.fields.size() > 0) {
                 for (var field : bag.fields) {
                     if(serializer_enabled) {
-                        pw.println("\t" + field.str_access + " Optional<" + field.str_type_annotations + "> " + field.str_name + ";");
+                        pw.println("\t" + field.strAccess + " Optional<" + field.strTypeAnnotations + "> " + field.strName + ";");
                     } else {
-                        pw.println("\t" + field.str_access + " " + field.str_type_annotations + " " + field.str_name + ";");
+                        pw.println("\t" + field.strAccess + " " + field.strTypeAnnotations + " " + field.strName + ";");
                     }
                 }
 
                 pw.print("\n");
             }
 
-            pw.println("\tpublic " + bag.new_name + "() {");
+            pw.println("\tpublic " + bag.newName + "() {");
 
             if(bag.clazz instanceof TypeElement) {
                 pw.println("\t\tsuper();\n");
@@ -257,7 +310,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 var constant = field.base.getConstantValue();
 
                 pw.print("\t\tthis.");
-                pw.print(field.str_name);
+                pw.print(field.strName);
                 pw.print(" = ");
                 pw.print((constant == null ? null : (serializer_enabled ? "Optional.ofNullable(" : "") + (constant instanceof String ? "\"" + constant + "\"" : constant) + (serializer_enabled ? ")" : "")));
                 pw.println(";");
@@ -273,41 +326,66 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
             for(var field: bag.fields) {
                 if(serializer_enabled) {
                     pw.print("\n");
-                    pw.println("\tpublic Boolean has" + APUtils.camelCase(field.str_name) + "Field() {");
-                    pw.println("\t\treturn this." + field.str_name + " != null ? true : false;");
+                    pw.println("\tpublic Boolean has" + APUtils.camelCase(field.strName) + "Field() {");
+                    pw.println("\t\treturn this." + field.strName + " != null ? true : false;");
                     pw.println("\t}");
                 }
 
                 pw.print("\n");
-                pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "(" + field.str_type + " def) {");
+
+                pw.println("\tpublic " + field.strTypeAnnotations + " get" + APUtils.camelCase(field.strName) + "(" + field.strType + " def) {");
 
                 if(serializer_enabled) {
-                    pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + ".orElse(def) : def;");
+                    pw.println("\t\treturn this." + field.strName + " != null ? this." + field.strName + ".orElse(def) : def;");
                 } else {
-                    pw.println("\t\treturn this." + field.str_name + " != null ? this." + field.str_name + " : def;");
+                    pw.println("\t\treturn this." + field.strName + " != null ? this." + field.strName + " : def;");
                 }
 
                 pw.println("\t}");
                 pw.print("\n");
-                pw.println("\tpublic " + field.str_type_annotations + " get" + APUtils.camelCase(field.str_name) + "() {");
-                pw.println("\t\treturn this.get" + APUtils.camelCase(field.str_name) + "(null);");
+
+                if(field.hasSuperGetter) {
+                    pw.println("\t@Override");
+                }
+
+                pw.println("\tpublic " + field.strTypeAnnotations + " get" + APUtils.camelCase(field.strName) + "() {");
+                pw.println("\t\treturn this.get" + APUtils.camelCase(field.strName) + "(null);");
                 pw.println("\t}");
                 pw.print("\n");
 
                 if(!field.base.getModifiers().contains(Modifier.FINAL)) {
-                    pw.println("\tpublic void clear" + APUtils.camelCase(field.str_name) + "() {");
-                    pw.println("\t\tthis." + field.str_name + " = null;");
-                    pw.println("\t}");
+                    pw.println("\tpublic void clear" + APUtils.camelCase(field.strName) + "() {");
+                    pw.print("\t\tthis." + field.strName + " = null;");
+
+                    if(field.hasSuperSetter) {
+                        pw.print(" super.set" + APUtils.camelCase(field.strName) + "(null);");
+                    }
+
+                    pw.println("\n\t}");
                     pw.print("\n");
 
+                    if(field.hasSuperSetter) {
+                        pw.println("\t@Override");
+                    }
+
                     if(serializer_enabled) {
-                        pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
-                        pw.println("\t\tthis." + field.str_name + " = Optional.ofNullable(value);");
-                        pw.println("\t}");
+                        pw.println("\tpublic void set" + APUtils.camelCase(field.strName) + "(final " + field.strType + " value) {");
+                        pw.print("\t\tthis." + field.strName + " = Optional.ofNullable(value);");
+
+                        if(field.hasSuperSetter) {
+                            pw.print(" super.set" + APUtils.camelCase(field.strName) + "(value);");
+                        }
+
+                        pw.println("\n\t}");
                     } else {
-                        pw.println("\tpublic void set" + APUtils.camelCase(field.str_name) + "(final " + field.str_type + " value) {");
-                        pw.println("\t\tthis." + field.str_name + " = value;");
-                        pw.println("\t}");
+                        pw.println("\tpublic void set" + APUtils.camelCase(field.strName) + "(final " + field.strType + " value) {");
+                        pw.print("\t\tthis." + field.strName + " = value;");
+
+                        if(field.hasSuperSetter) {
+                            pw.print(" super.set" + APUtils.camelCase(field.strName) + "(value);");
+                        }
+
+                        pw.println("\n\t}");
                     }
                 }
             }
@@ -319,48 +397,44 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         }
     }
 
-    private void makeDefaultSerializer(DefaultDatasetClassBag bag, SettingsBag settings){
-        try {
-            var f = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.new_name);
+    private void makeDefaultSerializer(DefaultDatasetClassBag bag, SettingsBag settings) throws IOException {
+        var file = filter.createSourceFile(bag.pkg.getQualifiedName() + "." + bag.newName);
 
-            try (var w = f.openWriter()) {
-                var from_name = getNewClassName(bag.clazz.getSimpleName().toString());
-                var pack = bag.pkg.getQualifiedName().toString();
-                var pw = new PrintWriter(w);
+        try (var w = file.openWriter()) {
+            var from_name = getNewClassName(bag.clazz.getSimpleName().toString());
+            var pack = bag.pkg.getQualifiedName().toString();
+            var pw = new PrintWriter(w);
 
-                pw.println("package " + pack + ";");
-                pw.print("\n");
+            pw.println("package " + pack + ";");
+            pw.print("\n");
 
-                for(var field: bag.imports.stream().filter(e -> !e.startsWith("java.lang.") && e.contains(".")).distinct().collect(Collectors.toList())) {
-                    pw.println("import " + field + ";");
-                }
-
-                pw.println("\n/**");
-                pw.println(" * Сгенерировано автоматически с помощью dto-optional-annotation-preprocessor");
-                pw.println(" * Этот класс используется для сериализации объекта @see {@link " + from_name + "}.");
-                pw.println(" * Реализованно от класса @see {@link " + bag.clazz.getSimpleName() + "}");
-                pw.println(" */");
-
-                pw.println("class " + bag.new_name + " extends StdSerializer<" + from_name +"> {");
-                pw.println("\tpublic " + bag.new_name + "() {");
-                pw.println("\t\tsuper(" + from_name + ".class);");
-                pw.println("\t}");
-                pw.print("\n");
-                pw.println("\tpublic " + bag.new_name + "(Class<" + from_name + "> from) {");
-                pw.println("\t\tsuper(from);");
-                pw.println("\t}");
-
-                pw.print("\n");
-                pw.println("\t@Override");
-                pw.println("\tpublic void serialize(" + from_name + " value, JsonGenerator gen, SerializerProvider provider) throws IOException {");
-                pw.println(buildThree(bag.clazz, settings));
-                pw.println("\t}");
-
-                pw.println("}");
-                pw.flush();
-            } catch (IOException x) {
-                processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, x.toString());
+            for(var field: bag.imports.stream().filter(e -> !e.startsWith("java.lang.") && e.contains(".")).distinct().collect(Collectors.toList())) {
+                pw.println("import " + field + ";");
             }
+
+            pw.println("\n/**");
+            pw.println(" * Сгенерировано автоматически с помощью dto-optional-annotation-preprocessor");
+            pw.println(" * Этот класс используется для сериализации объекта @see {@link " + from_name + "}.");
+            pw.println(" * Реализованно от класса @see {@link " + bag.clazz.getSimpleName() + "}");
+            pw.println(" */");
+
+            pw.println("class " + bag.newName + " extends StdSerializer<" + from_name +"> {");
+            pw.println("\tpublic " + bag.newName + "() {");
+            pw.println("\t\tsuper(" + from_name + ".class);");
+            pw.println("\t}");
+            pw.print("\n");
+            pw.println("\tpublic " + bag.newName + "(Class<" + from_name + "> from) {");
+            pw.println("\t\tsuper(from);");
+            pw.println("\t}");
+
+            pw.print("\n");
+            pw.println("\t@Override");
+            pw.println("\tpublic void serialize(" + from_name + " value, JsonGenerator gen, SerializerProvider provider) throws IOException {");
+            pw.println(buildThree(bag.clazz, settings));
+            pw.println("\t}");
+
+            pw.println("}");
+            pw.flush();
         } catch (IOException x) {
             processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, x.toString());
         }
@@ -457,35 +531,49 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
     private ConstructorBag createConstructorFor(
         TypeElement element,
         HashMap<String, FieldContainer> fields,
-        String constructor_name,
-        List<String> parent_imports,
+        String constructorName,
+        List<String> parentImports,
         Element clazz,
-        Boolean serializer_enabled
+        Boolean serializerEnabled
     ) {
         var bag = new ConstructorBag();
         var builder = new StringBuilder();
-        var object_fields = ElementFilter.fieldsIn(element.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
-        var object_methods = ElementFilter.methodsIn(element.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
-        var simple_name = element.getSimpleName().toString();
-        var conversion_name = element.getAnnotation(RequestDTO.class) != null ? getNewRequestClassName(simple_name) : simple_name;
-        var skip_count = 0;
+        var objectFields = ElementFilter.fieldsIn(element.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
+        var objectMethods = ElementFilter.methodsIn(element.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
+        var simpleName = element.getSimpleName().toString();
+        var conversionName = element.getAnnotation(RequestDTO.class) != null ? getNewRequestClassName(simpleName) : simpleName;
+        var objectFieldsSet = objectFields.values();
+        var fulfilled = new HashSet<>();
+        var skipCount = 0;
 
         builder.append("\tpublic ")
-            .append(constructor_name)
+            .append(constructorName)
             .append("(")
-            .append(conversion_name)
+            .append(conversionName)
             .append(" from)")
         .append(" {\n\t\tthis();\n\n\t\tif(from != null) {");
 
         //
         // Стандартный обработчик конверсии
         //
-        for(var field: object_fields.values()) {
-            var getter_signature = APUtils.toGetter(field.getSimpleName().toString());
-            var getter = object_methods.get(getter_signature);
-            var mirror_signature = fields.keySet().stream().filter(e -> e.startsWith(field.getSimpleName().toString())).min(Comparator.comparingInt(String::length)).orElse("");
-            var mirror_rest = mirror_signature.length() > field.getSimpleName().length() ? mirror_signature.substring(field.getSimpleName().length()) : "";
-            var mirror = fields.get(mirror_signature);
+        for(var field: objectFieldsSet) {
+            var localSimpleName = field.getSimpleName().toString();
+            var getterSignature = APUtils.toGetter(localSimpleName);
+            var getter = objectMethods.get(getterSignature);
+            var mirrorSignature = fields.keySet().stream().filter(e -> e.startsWith(localSimpleName)).min(Comparator.comparingInt(String::length)).orElse("");
+            var mirrorRest = mirrorSignature.length() > localSimpleName.length() ? mirrorSignature.substring(field.getSimpleName().length()) : "";
+            var mirror = fields.get(mirrorSignature);
+            var fieldModifiers = field.getModifiers();
+
+            if(objectFields.containsKey(mirrorSignature) && !mirrorRest.isEmpty()) {
+                continue;
+            }
+
+            if(fulfilled.contains(mirrorSignature)) {
+                continue;
+            } else {
+                fulfilled.add(mirrorSignature);
+            }
 
             //
             // Условия обработки поля
@@ -494,8 +582,8 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 mirror != null && !mirror.base.getModifiers().contains(Modifier.FINAL) && (
                     getter != null && getter.getModifiers().contains(Modifier.PUBLIC) ||
                     element.getAnnotation(RequestDTO.class) != null && (
-                        field.getModifiers().contains(Modifier.PRIVATE) ||
-                        field.getModifiers().contains(Modifier.PROTECTED)
+                        fieldModifiers.contains(Modifier.PRIVATE) ||
+                        fieldModifiers.contains(Modifier.PROTECTED)
                     )
                 )
             ) {
@@ -508,14 +596,17 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 //
                 var return_type = getter != null ? getter.getReturnType() : field.asType();
 
-                if(mirror_rest.length() != 0) {
+                //
+                // Если не найдено точное совпадение
+                //
+                if(mirrorRest.length() != 0) {
                     //
                     // _id => id
                     // Id => id
                     //
-                    if(mirror_rest.length() > 1) {
-                        mirror_rest = mirror_rest.contains("_") ? mirror_rest.substring(1) : mirror_rest;
-                        mirror_rest = mirror_rest.substring(0, 1).toLowerCase(Locale.ROOT) + mirror_rest.substring(1);
+                    if(mirrorRest.length() > 1) {
+                        mirrorRest = mirrorRest.contains("_") ? mirrorRest.substring(1) : mirrorRest;
+                        mirrorRest = mirrorRest.substring(0, 1).toLowerCase(Locale.ROOT) + mirrorRest.substring(1);
                     }
 
                     if(return_type.getKind() != TypeKind.VOID) {
@@ -523,15 +614,15 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                         if (return_type_element instanceof TypeElement) {
                             var type = (TypeElement) return_type_element;
-                            var rest_getter = APUtils.toGetter(mirror_rest);
+                            var rest_getter = APUtils.toGetter(mirrorRest);
                             var get_rest = ElementFilter.methodsIn(type.getEnclosedElements()).stream().filter(e -> e.getSimpleName().toString().equals(rest_getter)).findFirst().orElse(null);
 
-                            if (getter == null || getter.getParameters().size() == 0 && get_rest != null && ((TypeElement) typeUtils.asElement(get_rest.getReturnType())).getQualifiedName().toString().equals(mirror.root_type)) {
+                            if (getter == null || getter.getParameters().size() == 0 && get_rest != null && ((TypeElement) typeUtils.asElement(get_rest.getReturnType())).getQualifiedName().toString().equals(mirror.rootType)) {
                                 builder
                                     .append("\n\t\t\tthis.set")
-                                    .append(APUtils.camelCase(mirror.str_name))
+                                    .append(APUtils.camelCase(mirror.strName))
                                     .append("(Objects.requireNonNullElse(from.")
-                                    .append(getter_signature)
+                                    .append(getterSignature)
                                     .append("(), new ")
                                     .append(type.getSimpleName())
                                     .append("()).")
@@ -550,7 +641,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                         var type_return_element = (TypeElement) return_type_element;
 
                         if (getter == null || getter.getParameters().size() == 0) {
-                            if(type_return_element.getQualifiedName().toString().equals(mirror.root_type)) {
+                            if(type_return_element.getQualifiedName().toString().equals(mirror.rootType)) {
                                 var mirror_type = mirror.base.asType();
 
                                 if(
@@ -587,29 +678,29 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                             switch (type_return_element.getQualifiedName().toString()) {
                                                 case "java.util.LinkedHashSet", "java.util.HashSet", "java.util.EnumSet", "java.util.TreeSet", "java.util.Set" -> builder
                                                         .append(skip_null_check ? "" : "\n\t\t\tif(from.")
-                                                        .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
+                                                        .append(skip_null_check ? "" : APUtils.toGetter(mirror.strName))
                                                         .append(skip_null_check ? "" : "() != null) {")
                                                         .append("\n\t\t\t")
                                                         .append(skip_null_check ? "" : "\t")
                                                         .append("this.")
-                                                        .append(APUtils.toSetter(mirror.str_name))
+                                                        .append(APUtils.toSetter(mirror.strName))
                                                         .append("((")
-                                                        .append(mirror.str_type)
+                                                        .append(mirror.strType)
                                                         .append(") from.")
-                                                        .append(getter_signature)
+                                                        .append(getterSignature)
                                                         .append("().clone());")
                                                     .append(skip_null_check ? "" : "\n\t\t\t}");
                                                 case "java.util.LinkedList", "java.util.ArrayList", "java.util.List" -> {
                                                     builder
                                                         .append(skip_null_check ? "" : "\n\t\t\tif(from.")
-                                                        .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
+                                                        .append(skip_null_check ? "" : APUtils.toGetter(mirror.strName))
                                                         .append(skip_null_check ? "" : "() != null) {")
                                                         .append("\n\t\t\t")
                                                         .append(skip_null_check ? "" : "\t")
                                                         .append("this.")
-                                                        .append(APUtils.toSetter(mirror.str_name))
+                                                        .append(APUtils.toSetter(mirror.strName))
                                                         .append("(new ArrayList<>(from.")
-                                                        .append(getter_signature)
+                                                        .append(getterSignature)
                                                         .append("()));")
                                                     .append(skip_null_check ? "" : "\n\t\t\t}");
 
@@ -657,14 +748,14 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                                                 builder
                                                     .append(skip_null_check ? "" : "\n\t\t\tif(from.")
-                                                    .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
+                                                    .append(skip_null_check ? "" : APUtils.toGetter(mirror.strName))
                                                     .append(skip_null_check ? "" : "() != null) {")
                                                     .append("\n\t\t\t")
                                                     .append(skip_null_check ? "" : "\t")
                                                     .append("this.")
-                                                    .append(APUtils.toSetter(mirror.str_name))
+                                                    .append(APUtils.toSetter(mirror.strName))
                                                     .append("(from.")
-                                                    .append(APUtils.toGetter(mirror.str_name))
+                                                    .append(APUtils.toGetter(mirror.strName))
                                                     .append("().stream().map(")
                                                     .append(response_dto_annotation != null ? getNewClassName(name) : name)
                                                     .append("::new")
@@ -681,14 +772,14 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                 bag.imports.add(mirror_declared_type_element.getQualifiedName().toString());
                                                 bag.imports.add("java.util.stream.Collectors");
                                             } else {
-                                                skip_count++;
+                                                skipCount++;
                                             }
                                         }
                                     } else {
-                                        skip_count++;
+                                        skipCount++;
                                     }
                                 } else {
-                                    builder.append("\n\t\t\tthis.").append(APUtils.toSetter(mirror.str_name)).append("(from.").append(getter_signature).append("());");
+                                    builder.append("\n\t\t\tthis.").append(APUtils.toSetter(mirror.strName)).append("(from.").append(getterSignature).append("());");
                                 }
                             } else {
                                 //
@@ -733,38 +824,38 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                                         builder
                                             .append(skip_null_check ? "" : "\n\t\t\tif(from.")
-                                            .append(skip_null_check ? "" : APUtils.toGetter(mirror.str_name))
+                                            .append(skip_null_check ? "" : APUtils.toGetter(mirror.strName))
                                             .append(skip_null_check ? "" : "() != null) {")
                                             .append("\n\t\t\t")
                                             .append(skip_null_check ? "" : "\t")
                                             .append("this.")
-                                            .append(APUtils.toSetter(mirror.str_name))
+                                            .append(APUtils.toSetter(mirror.strName))
                                             .append("(new ")
                                             .append(request_dto_annotation != null ? getNewClassName(name) : name)
                                             .append("(from.")
-                                            .append(getter_signature)
+                                            .append(getterSignature)
                                             .append("()));")
                                         .append(skip_null_check ? "" : "\n\t\t\t}");
 
                                         bag.imports.add(t_mirror_type.getQualifiedName().toString());
                                     } else {
-                                        skip_count++;
+                                        skipCount++;
                                     }
                                 } else {
-                                    skip_count++;
+                                    skipCount++;
                                 }
                             }
                         } else {
-                            skip_count++;
+                            skipCount++;
                         }
                     } else {
-                        skip_count++;
+                        skipCount++;
                     }
                 } else {
-                    skip_count++;
+                    skipCount++;
                 }
             } else {
-                skip_count++;
+                skipCount++;
             }
         }
 
@@ -785,17 +876,17 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                         var param_name = detectMethodParams(tree.getParameters()).stream().findFirst().orElse(null);
 
                         for(var line: tree.getBody().getStatements()) {
-                            builder.append("\n\t\t\t").append(replaceAllLinks(line, param_name, serializer_enabled, clazz.getSimpleName().toString(), constructor_name));
+                            builder.append("\n\t\t\t").append(replaceAllLinks(line, param_name, serializerEnabled, clazz.getSimpleName().toString(), constructorName));
                         }
 
-                        bag.imports.addAll(getIntersectOf(constructor, parent_imports));
+                        bag.imports.addAll(getIntersectOf(constructor, parentImports));
                     }
                 }
             }
         }
 
-        if(skip_count > 0) {
-            System.out.println("[WARN] When creating the converter " + constructor_name + " -> " + conversion_name + " " + skip_count + " fields were omitted");
+        if(skipCount > 0) {
+            System.out.println("[WARN] When creating the converter " + constructorName + " -> " + conversionName + " " + skipCount + " fields were omitted");
         }
 
         builder.append("\n\t\t}\n\t}");

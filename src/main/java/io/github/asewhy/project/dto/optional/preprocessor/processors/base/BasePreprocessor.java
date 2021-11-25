@@ -35,11 +35,15 @@ public abstract class BasePreprocessor<A extends Annotation> {
             var a_throws = getSetterExceptions();
             var result = processResult();
 
-            writer.println("\t@JsonProperty(\"" + APUtils.convertToCurrentCase(field.str_name, settings.policy) + "\")");
+            if(field.hasSuperSetter) {
+                writer.println("\t@Override");
+            }
+
+            writer.println("\t@JsonProperty(\"" + APUtils.convertToCurrentCase(field.strName, settings.policy) + "\")");
             writer.print("\tpublic void ");
-            writer.print(APUtils.toSetter(field.str_name));
+            writer.print(APUtils.toSetter(field.strName));
             writer.print("(");
-            writer.print(this.getSetterType() != null ? this.getSetterType() : field.str_type);
+            writer.print(this.getSetterType() != null ? this.getSetterType() : field.strType);
             writer.print(" value) ");
 
             if(a_throws != null && a_throws.size() > 0) {
@@ -54,16 +58,20 @@ public abstract class BasePreprocessor<A extends Annotation> {
 
             if(serializer_enabled) {
                 writer.print("\t\tthis.");
-                writer.print(field.str_name);
+                writer.print(field.strName);
                 writer.print(" = Optional.ofNullable(");
                 writer.print(result);
                 writer.println(");");
             } else {
                 writer.print("\t\tthis.");
-                writer.print(field.str_name);
+                writer.print(field.strName);
                 writer.print(" = ");
                 writer.print(result);
                 writer.println(";");
+            }
+
+            if(field.hasSuperSetter) {
+                writer.println("\t\tsuper.set" + APUtils.camelCase(field.strName) + "(value);");
             }
 
             writer.println("\t}");

@@ -7,9 +7,9 @@ import java.util.List;
 
 public class DefaultDatasetClassBag {
     public PackageElement pkg;
-    public String new_name;
+    public String newName;
     public List<String> imports = new ArrayList<>();
-    public Element base_class;
+    public Element baseClass;
     public Element clazz;
     public List<FieldContainer> fields = new ArrayList<>();
     public List<String> constructors = new ArrayList<>();

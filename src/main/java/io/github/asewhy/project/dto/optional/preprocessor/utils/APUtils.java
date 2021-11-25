@@ -3,15 +3,20 @@ package io.github.asewhy.project.dto.optional.preprocessor.utils;
 import io.github.asewhy.project.dto.optional.preprocessor.enums.FieldPolicy;
 
 import javax.annotation.processing.ProcessingEnvironment;
+import javax.lang.model.element.ExecutableElement;
+import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.MirroredTypesException;
+import javax.lang.model.type.TypeKind;
 import javax.lang.model.type.TypeMirror;
+import javax.lang.model.util.Types;
 import javax.tools.Diagnostic;
 import java.lang.reflect.Proxy;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Стырил https://stackoverflow.com/questions/7687829/java-6-annotation-processing-getting-a-class-from-an-annotation
@@ -106,6 +111,43 @@ public class APUtils {
 
     public static String toCurrentPolicySetter(String field_name, FieldPolicy policy) {
         return "set" + convertToCurrentCase(field_name, policy);
+    }
+
+    public static boolean hasOverride(Types typeUtils, List<ExecutableElement> method, String name, String type, String... args) {
+        return method.stream().anyMatch(e -> {
+            var result = e.getSimpleName().contentEquals(name);
+            var returnTypeKind = e.getReturnType();
+            var returnType = typeUtils.asElement(returnTypeKind);
+
+            if(returnType instanceof TypeElement) {
+                var returnTypeElement = (TypeElement) returnType;
+                var returnTypeElementArguments =  e.getParameters();
+
+                if(result) {
+                    if(returnTypeKind.getKind() != TypeKind.VOID) {
+                        result = returnTypeElement.getSimpleName().contentEquals(type);
+                    } else {
+                        result = "void".equals(type);
+                    }
+                }
+
+                if(result && args.length > 0) {
+                    var arguments = returnTypeElementArguments.stream().map(a -> a.getSimpleName().toString()).collect(Collectors.toList());
+
+                    if(arguments.size() != args.length ) {
+                        result = false;
+                    } else {
+                        for(var i = 0; i < args.length; i++) {
+                            if(!arguments.get(i).equals(args[i])) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return result;
+        });
     }
 
     /**
