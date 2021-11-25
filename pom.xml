@@ -8,7 +8,7 @@
 
     <groupId>io.github.asewhy</groupId>
     <artifactId>dto-optional-annotation-preprocessor</artifactId>
-    <version>0.0.7</version>
+    <version>0.0.6</version>
     <url>https://github.com/AseWhy/dto-optional-annotation-preprocessor</url>
 
     <properties>
