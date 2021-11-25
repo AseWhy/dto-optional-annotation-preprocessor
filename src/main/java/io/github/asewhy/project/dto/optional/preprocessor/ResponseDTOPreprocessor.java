@@ -452,28 +452,42 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
     ) {
         var bag = new ConstructorBag();
         var builder = new StringBuilder();
-        var object_fields = ElementFilter.fieldsIn(element.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
-        var object_methods = ElementFilter.methodsIn(element.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
-        var simple_name = element.getSimpleName().toString();
-        var conversion_name = element.getAnnotation(RequestDTO.class) != null ? getNewRequestClassName(simple_name) : simple_name;
+        var objectFields = ElementFilter.fieldsIn(element.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
+        var objectMethods = ElementFilter.methodsIn(element.getEnclosedElements()).stream().collect(Collectors.toMap(e -> e.getSimpleName().toString(), e -> e));
+        var simpleName = element.getSimpleName().toString();
+        var conversionName = element.getAnnotation(RequestDTO.class) != null ? getNewRequestClassName(simpleName) : simpleName;
+        var objectFieldsSet = objectFields.values();
+        var fulfilled = new HashSet<>();
         var skip_count = 0;
 
         builder.append("\tpublic ")
             .append(constructor_name)
             .append("(")
-            .append(conversion_name)
+            .append(conversionName)
             .append(" from)")
         .append(" {\n\t\tthis();\n\n\t\tif(from != null) {");
 
         //
         // Стандартный обработчик конверсии
         //
-        for(var field: object_fields.values()) {
-            var getter_signature = APUtils.toGetter(field.getSimpleName().toString());
-            var getter = object_methods.get(getter_signature);
-            var mirror_signature = fields.keySet().stream().filter(e -> e.startsWith(field.getSimpleName().toString())).min(Comparator.comparingInt(String::length)).orElse("");
-            var mirror_rest = mirror_signature.length() > field.getSimpleName().length() ? mirror_signature.substring(field.getSimpleName().length()) : "";
-            var mirror = fields.get(mirror_signature);
+        for(var field: objectFields.values()) {
+            var localSimpleName = field.getSimpleName().toString();
+            var getterSignature = APUtils.toGetter(localSimpleName);
+            var getter = objectMethods.get(getterSignature);
+            var mirrorSignature = fields.keySet().stream().filter(e -> e.startsWith(localSimpleName)).min(Comparator.comparingInt(String::length)).orElse("");
+            var mirrorRest = mirrorSignature.length() > localSimpleName.length() ? mirrorSignature.substring(field.getSimpleName().length()) : "";
+            var mirror = fields.get(mirrorSignature);
+            var fieldModifiers = field.getModifiers();
+
+            if(objectFields.containsKey(mirrorSignature) && !mirrorRest.isEmpty()) {
+                continue;
+            }
+
+            if(fulfilled.contains(mirrorSignature)) {
+                continue;
+            } else {
+                fulfilled.add(mirrorSignature);
+            }
 
             //
             // Условия обработки поля
@@ -482,8 +496,8 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 mirror != null && !mirror.base.getModifiers().contains(Modifier.FINAL) && (
                     getter != null && getter.getModifiers().contains(Modifier.PUBLIC) ||
                     element.getAnnotation(RequestDTO.class) != null && (
-                        field.getModifiers().contains(Modifier.PRIVATE) ||
-                        field.getModifiers().contains(Modifier.PROTECTED)
+                        fieldModifiers.contains(Modifier.PRIVATE) ||
+                        fieldModifiers.contains(Modifier.PROTECTED)
                     )
                 )
             ) {
@@ -496,14 +510,14 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                 //
                 var return_type = getter != null ? getter.getReturnType() : field.asType();
 
-                if(mirror_rest.length() != 0) {
+                if(mirrorRest.length() != 0) {
                     //
                     // _id => id
                     // Id => id
                     //
-                    if(mirror_rest.length() > 1) {
-                        mirror_rest = mirror_rest.contains("_") ? mirror_rest.substring(1) : mirror_rest;
-                        mirror_rest = mirror_rest.substring(0, 1).toLowerCase(Locale.ROOT) + mirror_rest.substring(1);
+                    if(mirrorRest.length() > 1) {
+                        mirrorRest = mirrorRest.contains("_") ? mirrorRest.substring(1) : mirrorRest;
+                        mirrorRest = mirrorRest.substring(0, 1).toLowerCase(Locale.ROOT) + mirrorRest.substring(1);
                     }
 
                     if(return_type.getKind() != TypeKind.VOID) {
@@ -511,7 +525,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
 
                         if (return_type_element instanceof TypeElement) {
                             var type = (TypeElement) return_type_element;
-                            var rest_getter = APUtils.toGetter(mirror_rest);
+                            var rest_getter = APUtils.toGetter(mirrorRest);
                             var get_rest = ElementFilter.methodsIn(type.getEnclosedElements()).stream().filter(e -> e.getSimpleName().toString().equals(rest_getter)).findFirst().orElse(null);
 
                             if (getter == null || getter.getParameters().size() == 0 && get_rest != null && ((TypeElement) typeUtils.asElement(get_rest.getReturnType())).getQualifiedName().toString().equals(mirror.root_type)) {
@@ -519,7 +533,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                     .append("\n\t\t\tthis.set")
                                     .append(APUtils.camelCase(mirror.str_name))
                                     .append("(Objects.requireNonNullElse(from.")
-                                    .append(getter_signature)
+                                    .append(getterSignature)
                                     .append("(), new ")
                                     .append(type.getSimpleName())
                                     .append("()).")
@@ -584,7 +598,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                         .append("((")
                                                         .append(mirror.str_type)
                                                         .append(") from.")
-                                                        .append(getter_signature)
+                                                        .append(getterSignature)
                                                         .append("().clone());")
                                                     .append(skip_null_check ? "" : "\n\t\t\t}");
                                                 case "java.util.LinkedList", "java.util.ArrayList", "java.util.List" -> {
@@ -597,7 +611,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                                         .append("this.")
                                                         .append(APUtils.toSetter(mirror.str_name))
                                                         .append("(new ArrayList<>(from.")
-                                                        .append(getter_signature)
+                                                        .append(getterSignature)
                                                         .append("()));")
                                                     .append(skip_null_check ? "" : "\n\t\t\t}");
 
@@ -676,7 +690,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                         skip_count++;
                                     }
                                 } else {
-                                    builder.append("\n\t\t\tthis.").append(APUtils.toSetter(mirror.str_name)).append("(from.").append(getter_signature).append("());");
+                                    builder.append("\n\t\t\tthis.").append(APUtils.toSetter(mirror.str_name)).append("(from.").append(getterSignature).append("());");
                                 }
                             } else {
                                 //
@@ -730,7 +744,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
                                             .append("(new ")
                                             .append(request_dto_annotation != null ? getNewClassName(name) : name)
                                             .append("(from.")
-                                            .append(getter_signature)
+                                            .append(getterSignature)
                                             .append("()));")
                                         .append(skip_null_check ? "" : "\n\t\t\t}");
 
@@ -783,7 +797,7 @@ public class ResponseDTOPreprocessor extends AbstractProcessor {
         }
 
         if(skip_count > 0) {
-            System.out.println("[WARN] When creating the converter " + constructor_name + " -> " + conversion_name + " " + skip_count + " fields were omitted");
+            System.out.println("[WARN] When creating the converter " + constructor_name + " -> " + conversionName + " " + skip_count + " fields were omitted");
         }
 
         builder.append("\n\t\t}\n\t}");

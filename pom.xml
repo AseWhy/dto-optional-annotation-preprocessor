@@ -8,7 +8,7 @@
 
     <groupId>io.github.asewhy</groupId>
     <artifactId>dto-optional-annotation-preprocessor</artifactId>
-    <version>0.0.6</version>
+    <version>0.1.0</version>
     <url>https://github.com/AseWhy/dto-optional-annotation-preprocessor</url>
 
     <properties>
@@ -43,7 +43,7 @@
         <dependency>
             <groupId>com.thoughtworks.qdox</groupId>
             <artifactId>qdox</artifactId>
-            <version>2.0.0</version>
+            <version>2.0.1</version>
         </dependency>
     </dependencies>
 
